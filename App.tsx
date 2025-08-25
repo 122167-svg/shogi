@@ -79,7 +79,7 @@ const MEMBERS: Member[] = [
 
 const GRADES = ['中1', '中2', '中3', '高1', '高2', '高3'];
 const CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
-const SHOGI_RANKS = ['特にない', '１１級以下', '10級', '9級', '8級', '7級', '6級', '5級', '4級', '3級', '2級', '1級', '初段', '二段', '三段', '4段以上'];
+const SHOGI_RANKS = ['特にない', '11級以下', '10級', '9級', '8級', '7級', '6級', '5級', '4級', '3級', '2級', '1級', '初段', '二段', '三段', '四段以上'];
 const ADMIN_PASSWORD = 'shogi';
 
 // ========== カスタムフック ==========
@@ -330,7 +330,13 @@ const MainScreen: React.FC<{ onSelect: (selection: 'student' | 'member' | 'exter
   const handlePressEnd = () => { if (longPressTimer) clearTimeout(longPressTimer); };
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-      <h1 className="text-6xl font-bold mb-6 text-amber-100 select-none cursor-pointer text-center" onMouseDown={handlePressStart} onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd} onTouchStart={handlePressStart} onTouchEnd={handlePressEnd}>巣園祭2025 将棋サロン 受付</h1>
+      <h1 className="text-5xl font-bold mb-10 text-amber-100 select-none cursor-pointer text-center" onMouseDown={handlePressStart} onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd} onTouchStart={handlePressStart} onTouchEnd={handlePressEnd}>
+        2025年度 巣園祭 将棋サロン
+        <br />
+        <span className="inline-block mt-4 bg-amber-300 text-stone-900 px-8 py-3 rounded-lg text-7xl tracking-widest shadow-md">
+          受付
+        </span>
+      </h1>
       <p className="text-2xl text-stone-300 mb-16">該当するボタンを押してください</p>
       <div className="w-full max-w-md space-y-8">
         <button onClick={() => onSelect('external')} className="w-full text-4xl font-semibold py-12 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg">外部の方</button>
