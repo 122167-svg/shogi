@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 
 declare const JSZip: any;
@@ -533,16 +534,16 @@ const CompletionScreen: React.FC<{ onFinish: () => void; visitorType: 'student' 
   }, [onFinish]);
 
   const messages = {
-    external: "パンフレットを取って、将棋サロンをお楽しみください。少しでも不明点があれば、近くにいる班員にお気軽にお声掛けください。",
-    student: "希望する場合はパンフレットを取ってください。混雑時は外部の方優先で対応させていただきます。予めご了承ください。将棋部では、体験入部・入部を一年中受け付けています。少しでも興味があれば、1人でも友達とでもいいので気軽に来てください。",
+    external: "パンフレットを取って、将棋サロンをお楽しみください。\n何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
+    student: "希望する場合はパンフレットを取ってください。\n混雑時は外部の方優先で対応させていただきます。予めご了承ください。\n現在、将棋部では、体験入部・入部を受け付けています。\n興味があれば、何人でも大丈夫ですので気軽に来てください。",
   };
   const message = visitorType ? messages[visitorType] : "将棋部の展示をお楽しみください！";
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-6 text-center">
-      <h2 className="text-7xl font-bold text-amber-100">受付完了</h2>
-      <p className="text-3xl mt-10 text-stone-300 max-w-4xl leading-relaxed">{message}</p>
-      <p className="text-lg mt-12 text-stone-400">自動でTOP画面に戻ります。</p>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-6">
+      <h2 className="text-7xl font-bold text-amber-100 text-center">受付完了</h2>
+      <p className="w-full max-w-4xl text-3xl mt-10 text-stone-300 leading-relaxed whitespace-pre-line text-left">{message}</p>
+      <p className="text-lg mt-12 text-stone-400 text-center">自動でTOP画面に戻ります。</p>
     </div>
   );
 };
