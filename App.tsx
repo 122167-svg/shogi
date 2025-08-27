@@ -1,48 +1,13 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-// FIX: The error `Module '"firebase/app"' has no exported member 'initializeApp'` indicates a Firebase version mismatch.
-// The code used v9 syntax, but the environment likely has Firebase v8.
-// The imports are updated to use the v8 namespaced syntax.
-import firebase from 'firebase/app';
-import 'firebase/database';
-import { 
-  getDatabase,
-  ref,
-  onValue,
-  push,
-  set,
-  remove
-} from 'firebase/database';
+import { db } from './firebase'; // Centralized Firebase instance
+import { ref, onValue, push, set, remove } from 'firebase/database';
 import CounterDisplay from './components/CounterDisplay';
 import ControlButton from './components/ControlButton';
 import PlusIcon from './components/icons/PlusIcon';
 import MinusIcon from './components/icons/MinusIcon';
 import ResetIcon from './components/icons/ResetIcon';
-
-
-// ====================================================================
-// =================== FIREBASE CONFIGURATION =========================
-// ====================================================================
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyBoBaeTiuZpkObBdYqzTqcXtgxGmZBvH2g",
-  authDomain: "sugamo-shogi-salon.firebaseapp.com",
-  projectId: "sugamo-shogi-salon",
-  storageBucket: "sugamo-shogi-salon.appspot.com",
-  messagingSenderId: "273029914798",
-  appId: "1:273029914798:web:c8f571793abab8a1378d3f",
-  databaseURL: "https://sugamo-shogi-salon-default-rtdb.firebaseio.com"
-};
-
-
-// FIX: Firebase initialization updated to v8 syntax.
-// The check for `firebase.apps.length` prevents re-initialization on hot reloads.
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
-const db = firebase.database();
-// ====================================================================
-
+import Guidance from './components/Guidance';
 
 declare const JSZip: any;
 
@@ -56,12 +21,14 @@ interface Student {
   studentId: string;
   shogiStrength: string;
   timestamp: string;
+  status: string;
 }
 interface ExternalVisitorGroup {
   id?: string;
   count: number;
   shogiStrength: string;
   timestamp: string;
+  status: string;
 }
 interface MemberStatus {
   [key: string]: {
@@ -113,6 +80,11 @@ const SHOGI_STRENGTHS = [
 ];
 
 const App: React.FC = () => {
+  // Simple routing based on URL
+  if (window.location.pathname.includes('guidance.html')) {
+    return <Guidance />;
+  }
+  
   const [view, setView] = useState<View>('main');
   const [students, setStudents] = useState<Student[]>([]);
   const [externalVisitors, setExternalVisitors] = useState<ExternalVisitorGroup[]>([]);
@@ -123,47 +95,43 @@ const App: React.FC = () => {
   const [externalCount, setExternalCount] = useState(1);
   const [externalShogiStrength, setExternalShogiStrength] = useState(SHOGI_STRENGTHS[2]);
 
-  // Realtime Database listeners
+  // Realtime Database listeners using Firebase v9 modular API
   useEffect(() => {
-    // FIX: Replaced v9 `onValue` with v8 `ref.on` and `ref.off` for listeners.
-    const studentsRef = db.ref('students');
-    const studentsCallback = (snapshot: firebase.database.DataSnapshot) => {
+    const studentsRef = ref(db, 'students');
+    const unsubscribeStudents = onValue(studentsRef, (snapshot) => {
       const data = snapshot.val();
       const studentList = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
       setStudents(studentList);
-    };
-    studentsRef.on('value', studentsCallback);
+    });
 
-    const externalRef = db.ref('external_visitors');
-    const externalCallback = (snapshot: firebase.database.DataSnapshot) => {
+    const externalRef = ref(db, 'external_visitors');
+    const unsubscribeExternal = onValue(externalRef, (snapshot) => {
       const data = snapshot.val();
       const externalList = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
       setExternalVisitors(externalList);
-    };
-    externalRef.on('value', externalCallback);
+    });
     
-    const membersRef = db.ref('status/members');
-    const membersCallback = (snapshot: firebase.database.DataSnapshot) => {
+    const membersRef = ref(db, 'status/members');
+    const unsubscribeMembers = onValue(membersRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
         setMemberStatus(data);
       }
-    };
-    membersRef.on('value', membersCallback);
+    });
     
-    const logsRef = db.ref('logs');
-    const logsCallback = (snapshot: firebase.database.DataSnapshot) => {
+    const logsRef = ref(db, 'logs');
+    const unsubscribeLogs = onValue(logsRef, (snapshot) => {
       const data = snapshot.val();
       const logList = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
       setLogs(logList);
-    };
-    logsRef.on('value', logsCallback);
+    });
 
+    // Cleanup function to detach listeners on component unmount
     return () => {
-      studentsRef.off('value', studentsCallback);
-      externalRef.off('value', externalCallback);
-      membersRef.off('value', membersCallback);
-      logsRef.off('value', logsCallback);
+      unsubscribeStudents();
+      unsubscribeExternal();
+      unsubscribeMembers();
+      unsubscribeLogs();
     };
   }, []);
 
@@ -184,15 +152,14 @@ const App: React.FC = () => {
   const handleStudentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const studentData: Omit<Student, 'timestamp' | 'id'> = {
+    const studentData: Omit<Student, 'timestamp' | 'id' | 'status'> = {
       grade: formData.get('grade') as string,
       class: formData.get('class') as string,
       studentId: formData.get('studentId') as string,
       shogiStrength: formData.get('shogiStrength') as string,
     };
     try {
-      // FIX: Replaced v9 `push(ref(...))` with v8 `db.ref(...).push(...)`.
-      await db.ref("students").push({ ...studentData, timestamp: new Date().toISOString() });
+      await push(ref(db, "students"), { ...studentData, timestamp: new Date().toISOString(), status: 'waiting' });
       handleThanks();
     } catch (error) {
       console.error("Error adding student: ", error);
@@ -210,8 +177,7 @@ const App: React.FC = () => {
       shogiStrength: externalShogiStrength,
     };
     try {
-      // FIX: Replaced v9 `push(ref(...))` with v8 `db.ref(...).push(...)`.
-      await db.ref("external_visitors").push({ ...groupData, timestamp: new Date().toISOString() });
+      await push(ref(db, "external_visitors"), { ...groupData, timestamp: new Date().toISOString(), status: 'waiting' });
       setExternalCount(1);
       setExternalShogiStrength(SHOGI_STRENGTHS[2]);
       handleThanks();
@@ -227,13 +193,12 @@ const App: React.FC = () => {
     const newTimestamp = new Date().toISOString();
   
     try {
-      // FIX: Replaced v9 `set(ref(...))` and `push(ref(...))` with v8 equivalents.
-      await db.ref(`status/members/${name}`).set({
+      await set(ref(db, `status/members/${name}`), {
         checkedIn: newStatus,
         lastChanged: newTimestamp,
       });
 
-      await db.ref("logs").push({
+      await push(ref(db, "logs"), {
         name,
         type: newStatus ? 'in' : 'out',
         timestamp: newTimestamp,
@@ -258,16 +223,15 @@ const App: React.FC = () => {
 
   const handleResetData = async () => {
     try {
-      // FIX: Replaced v9 `remove(ref(...))` and `set(ref(...))` with v8 equivalents.
-      await db.ref('students').remove();
-      await db.ref('external_visitors').remove();
-      await db.ref('logs').remove();
+      await remove(ref(db, 'students'));
+      await remove(ref(db, 'external_visitors'));
+      await remove(ref(db, 'logs'));
       
       const initialMemberStatus: MemberStatus = {};
       MEMBERS.forEach(member => {
         initialMemberStatus[member.name] = { checkedIn: false, lastChanged: new Date().toISOString() };
       });
-      await db.ref("status/members").set(initialMemberStatus);
+      await set(ref(db, "status/members"), initialMemberStatus);
       
       showNotification('すべてのデータがリセットされました。', 'success');
       setView('admin');
