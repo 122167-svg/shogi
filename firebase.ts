@@ -1,7 +1,4 @@
-// FIX: The named import for `initializeApp` was failing. Switched to a namespace import
-// (`import * as firebase from "firebase/app"`) to ensure compatibility with various
-// module resolution settings and Firebase v9 patch versions.
-import * as firebase from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 
 // Your web app's Firebase configuration
@@ -16,7 +13,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = firebase.initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
 
 // Get a reference to the database service
 export const db = getDatabase(app);
