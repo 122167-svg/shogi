@@ -1,7 +1,5 @@
-import { initializeApp } from "firebase/app";
-// Side-effect import to register the database service, fixing initialization errors in some environments.
-import "firebase/database";
-import { getDatabase } from "firebase/database";
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/database';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -15,7 +13,9 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
 // Get a reference to the database service
-export const db = getDatabase(app);
+export const db = firebase.database();
