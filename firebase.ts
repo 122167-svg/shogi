@@ -1,4 +1,6 @@
 import { initializeApp } from "firebase/app";
+// Side-effect import to register the database service, fixing initialization errors in some environments.
+import "firebase/database";
 import { getDatabase } from "firebase/database";
 
 // Your web app's Firebase configuration
