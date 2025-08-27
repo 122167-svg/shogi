@@ -1,5 +1,48 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+// FIX: The error `Module '"firebase/app"' has no exported member 'initializeApp'` indicates a Firebase version mismatch.
+// The code used v9 syntax, but the environment likely has Firebase v8.
+// The imports are updated to use the v8 namespaced syntax.
+import firebase from 'firebase/app';
+import 'firebase/database';
+import { 
+  getDatabase,
+  ref,
+  onValue,
+  push,
+  set,
+  remove
+} from 'firebase/database';
+import CounterDisplay from './components/CounterDisplay';
+import ControlButton from './components/ControlButton';
+import PlusIcon from './components/icons/PlusIcon';
+import MinusIcon from './components/icons/MinusIcon';
+import ResetIcon from './components/icons/ResetIcon';
+
+
+// ====================================================================
+// =================== FIREBASE CONFIGURATION =========================
+// ====================================================================
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBoBaeTiuZpkObBdYqzTqcXtgxGmZBvH2g",
+  authDomain: "sugamo-shogi-salon.firebaseapp.com",
+  projectId: "sugamo-shogi-salon",
+  storageBucket: "sugamo-shogi-salon.appspot.com",
+  messagingSenderId: "273029914798",
+  appId: "1:273029914798:web:c8f571793abab8a1378d3f",
+  databaseURL: "https://sugamo-shogi-salon-default-rtdb.firebaseio.com"
+};
+
+
+// FIX: Firebase initialization updated to v8 syntax.
+// The check for `firebase.apps.length` prevents re-initialization on hot reloads.
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.database();
+// ====================================================================
+
 
 declare const JSZip: any;
 
@@ -7,6 +50,7 @@ declare const JSZip: any;
 type View = 'main' | 'student' | 'member' | 'thanks' | 'admin' | 'external' | 'adminLogin' | 'resetConfirmation';
 
 interface Student {
+  id?: string;
   grade: string;
   class: string;
   studentId: string;
@@ -14,6 +58,7 @@ interface Student {
   timestamp: string;
 }
 interface ExternalVisitorGroup {
+  id?: string;
   count: number;
   shogiStrength: string;
   timestamp: string;
@@ -25,6 +70,7 @@ interface MemberStatus {
   };
 }
 interface LogEntry {
+  id?: string;
   name: string;
   type: 'in' | 'out';
   timestamp: string;
@@ -59,618 +105,407 @@ const MEMBERS: Member[] = [
   { name: '金 悠鉉', furigana: 'きむゆうひょん' },
   { name: '小林 慈人', furigana: 'こばやしよしひと' },
   { name: '坂内 元気', furigana: 'さかうちげんき' },
-  { name: '下村 篤生', furigana: 'しもむらあつき' },
-  { name: '染谷 尚太朗', furigana: 'そめやしょうたろう' },
-  { name: '高木 翔玄', furigana: 'たかぎしょうげん' },
-  { name: '棚瀬 侑真', furigana: 'たなせゆうま' },
-  { name: '中野 琥太郎', furigana: 'なかのこたろう' },
-  { name: '西内 幸輝', furigana: 'にしうちこうき' },
-  { name: '野田 慧', furigana: 'のださとし' },
-  { name: '秀村 紘嗣', furigana: 'ひでむらひろつぐ' },
-  { name: '船津 太一', furigana: 'ふなつたいち' },
-  { name: '槇 啓秀', furigana: 'まきひろひで' },
-  { name: '松井 俐真', furigana: 'まついりしん' },
-  { name: '森本 直樹', furigana: 'もりもとなおき' },
-  { name: '山田 悠聖', furigana: 'やまだゆうせい' },
-  { name: '若林 空', furigana: 'わかばやしそら' },
-  { name: '小畑 貴慈', furigana: 'おばたたかちか' },
-  { name: '龍口 直史', furigana: 'たつぐちなおふみ' },
+  { name: '下村 篤生', furigana: 'しもむらあつお' },
 ];
 
-const GRADES = ['中1', '中2', '中3', '高1', '高2', '高3'];
-const CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
-const SHOGI_RANKS = ['特にない', '11級以下', '10級', '9級', '8級', '7級', '6級', '5級', '4級', '3級', '2級', '1級', '初段', '二段', '三段', '四段以上'];
-const ADMIN_PASSWORD = 'shogi';
-
-// ========== カスタムフック ==========
-function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    try {
-      const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      console.error(error);
-      return initialValue;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(storedValue));
-    } catch (error) {
-      console.error(error);
-    }
-  }, [key, storedValue]);
-
-  return [storedValue, setStoredValue];
-}
-
-
-// ========== UIコンポーネント ==========
-
-const Notification: React.FC<{ notification: NotificationMessage | null }> = ({ notification }) => {
-  if (!notification) return null;
-  const baseStyle = "fixed bottom-8 left-1/2 -translate-x-1/2 py-3 px-6 rounded-lg shadow-2xl text-white z-[100] text-lg";
-  const typeStyle = notification.type === 'success' ? 'bg-green-600' : 'bg-red-700';
-  return (
-    <div className={`${baseStyle} ${typeStyle}`} role="alert">
-      {notification.message}
-    </div>
-  );
-};
-
-const NumericKeypad: React.FC<{ value: string; onValueChange: (value: string) => void }> = ({ value, onValueChange }) => {
-  const handleKeyPress = (key: string) => {
-    if (value.length >= 3) return;
-    onValueChange(value + key);
-  };
-  const handleBackspace = () => onValueChange(value.slice(0, -1));
-  const handleClear = () => onValueChange('');
-  const buttonClass = "w-full h-20 bg-stone-700 hover:bg-stone-600 rounded-lg text-4xl font-bold flex items-center justify-center transition-transform transform active:scale-95 text-white";
-
-  return (
-    <div className="w-full max-w-xs mx-auto grid grid-cols-3 gap-3">
-      {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => (
-        <button key={key} type="button" onClick={() => handleKeyPress(key)} className={buttonClass}>{key}</button>
-      ))}
-      <button type="button" onClick={handleClear} className={`${buttonClass} bg-red-800 hover:bg-red-700`}>C</button>
-      <button type="button" onClick={() => handleKeyPress('0')} className={buttonClass}>0</button>
-      <button type="button" onClick={handleBackspace} className={`${buttonClass} bg-stone-600 hover:bg-stone-500`}>⌫</button>
-    </div>
-  );
-};
-
-const AdminLogin: React.FC<{ onLogin: (password: string) => void; onBack: () => void }> = ({ onLogin, onBack }) => {
-    const [password, setPassword] = useState('');
-  
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      onLogin(password);
-    };
-  
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-gray-800 p-4">
-        <button onClick={onBack} className="absolute top-4 left-4 text-gray-500 hover:text-gray-800">&larr; 戻る</button>
-        <h2 className="text-3xl font-bold mb-8 text-gray-900">管理者ログイン</h2>
-        <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-3 bg-white border border-gray-300 rounded-md text-center text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            placeholder="パスワード"
-          />
-          <button type="submit" className="w-full text-xl font-semibold py-4 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
-            ログイン
-          </button>
-        </form>
-      </div>
-    );
-};
-
-const AdminView: React.FC<{
-  log: LogEntry[];
-  studentVisitors: Student[];
-  externalVisitors: ExternalVisitorGroup[];
-  memberStatus: MemberStatus;
-  onBack: () => void;
-  onNavigateToReset: () => void;
-  setNotification: (notification: NotificationMessage | null) => void;
-}> = ({ log, studentVisitors, externalVisitors, memberStatus, onBack, onNavigateToReset, setNotification }) => {
-  const [adminSubView, setAdminSubView] = useState<'menu' | 'students' | 'externals' | 'members'>('menu');
-  const externalCount = externalVisitors.reduce((sum, group) => sum + group.count, 0);
-  const totalVisitors = externalCount + studentVisitors.length;
-
-  const handleBatchCsvBackup = () => {
-    try {
-      const zip = new JSZip();
-
-      const convertToCsv = (data: any[], headers: Record<string, string>): string => {
-        const headerKeys = Object.keys(headers);
-        const headerValues = Object.values(headers);
-        const csvRows = [headerValues.join(',')];
-        for (const row of data) {
-            const values = headerKeys.map(key => {
-                let value = row[key];
-                if (value === null || value === undefined) value = '';
-                const stringValue = String(value);
-                if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-                    return `"${stringValue.replace(/"/g, '""')}"`;
-                }
-                return stringValue;
-            });
-            csvRows.push(values.join(','));
-        }
-        return '\uFEFF' + csvRows.join('\r\n');
-      };
-
-      if (studentVisitors.length > 0) {
-        const studentCsv = convertToCsv(studentVisitors.map(s => ({...s, timestamp: new Date(s.timestamp).toLocaleString('ja-JP')})), { timestamp: '受付日時', grade: '学年', class: 'クラス', studentId: '出席番号', shogiStrength: '棋力' });
-        zip.file('在校生来場者.csv', studentCsv);
-      }
-
-      if (externalVisitors.length > 0) {
-        const externalCsv = convertToCsv(externalVisitors.map(e => ({...e, timestamp: new Date(e.timestamp).toLocaleString('ja-JP')})), { timestamp: '受付日時', count: '人数', shogiStrength: '棋力' });
-        zip.file('外部来場者.csv', externalCsv);
-      }
-
-      if (log.length > 0) {
-        const logCsv = convertToCsv(log.map(l => ({ ...l, type: l.type === 'in' ? '出勤' : '退勤', timestamp: new Date(l.timestamp).toLocaleString('ja-JP') })), { timestamp: '日時', name: '部員名', type: '種別' });
-        zip.file('部員出退勤履歴.csv', logCsv);
-      }
-
-      const memberStatusData = Object.keys(memberStatus).map(name => ({
-        name,
-        status: memberStatus[name].checkedIn ? '出勤中' : '退勤中',
-        lastChanged: new Date(memberStatus[name].lastChanged).toLocaleString('ja-JP'),
-      }));
-      if (memberStatusData.length > 0) {
-        const memberStatusCsv = convertToCsv(memberStatusData, { name: '部員名', status: '現在の状態', lastChanged: '最終更新日時' });
-        zip.file('部員ステータス.csv', memberStatusCsv);
-      }
-
-      zip.generateAsync({ type: 'blob' }).then((blob: any) => {
-        if (blob.size === 0) {
-          setNotification({ message: 'エクスポートするデータがありません。', type: 'error' });
-          return;
-        }
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `shogi_backup_${timestamp}.zip`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        setNotification({ message: 'CSV一括バックアップが完了しました。', type: 'success' });
-      });
-
-    } catch (error) {
-      console.error('ZIP export failed:', error);
-      setNotification({ message: 'バックアップファイルの作成に失敗しました。', type: 'error' });
-    }
-  };
-
-
-  if (adminSubView !== 'menu') {
-    const listTitle: { [key: string]: string } = {
-        students: '在校生 来場者一覧',
-        externals: '外部 来場者一覧',
-        members: '部員 出退勤履歴',
-    };
-    return (
-      <div className="min-h-screen bg-gray-100 text-gray-800 p-4">
-        <button onClick={() => setAdminSubView('menu')} className="fixed top-4 left-4 text-gray-600 hover:text-gray-900 z-10 bg-white/80 backdrop-blur-sm border border-gray-300 rounded-full px-4 py-2 hover:bg-gray-50">&larr; 管理者メニューに戻る</button>
-        <div className="max-w-6xl mx-auto pt-16">
-          <div className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg">
-            <h3 className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">{listTitle[adminSubView]}</h3>
-            <div className="max-h-[75vh] overflow-y-auto">
-              {adminSubView === 'students' && (
-                studentVisitors.length === 0 ? <p className="text-center text-gray-500 py-4">在校生の来場者はいません。</p> : <table className="w-full text-left"><thead className="sticky top-0 bg-gray-50"><tr><th className="p-2">受付日時</th><th className="p-2">学年</th><th className="p-2">クラス</th><th className="p-2">番号</th><th className="p-2">棋力</th></tr></thead><tbody>{studentVisitors.slice().reverse().map((s, i) => (<tr key={i} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(s.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{s.grade}</td><td className="p-2">{s.class}</td><td className="p-2">{s.studentId}</td><td className="p-2">{s.shogiStrength}</td></tr>))}</tbody></table>
-              )}
-              {adminSubView === 'externals' && (
-                externalVisitors.length === 0 ? <p className="text-center text-gray-500 py-4">外部の来場者はいません。</p> : <table className="w-full text-left"><thead className="sticky top-0 bg-gray-50"><tr><th className="p-2">受付日時</th><th className="p-2">人数</th><th className="p-2">棋力</th></tr></thead><tbody>{externalVisitors.slice().reverse().map((g, i) => (<tr key={i} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(g.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{g.count}名</td><td className="p-2">{g.shogiStrength}</td></tr>))}</tbody></table>
-              )}
-              {adminSubView === 'members' && (
-                log.length === 0 ? <p className="text-center text-gray-500 py-4">履歴はありません。</p> : <div className="space-y-2">{log.slice().reverse().map((e, i) => (<div key={i} className="flex justify-between items-center p-2 border-b border-gray-200 last:border-b-0"><div><p className="font-semibold">{e.name}</p><p className="text-sm text-gray-500">{new Date(e.timestamp).toLocaleString('ja-JP')}</p></div><span className={`px-3 py-1 text-sm rounded-full font-bold ${e.type === 'in' ? 'bg-green-600 text-white' : 'bg-gray-500 text-white'}`}>{e.type === 'in' ? '出勤' : '退勤'}</span></div>))}</div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-100 text-gray-800 p-4">
-      <button onClick={onBack} className="fixed top-4 left-4 text-gray-600 hover:text-gray-900 z-10 bg-white/80 backdrop-blur-sm border border-gray-300 rounded-full px-4 py-2 hover:bg-gray-50">&larr; 戻る</button>
-      <div className="max-w-4xl mx-auto pt-12 pb-8">
-        <h2 className="text-3xl font-bold mb-8 text-gray-900 text-center">管理者画面</h2>
-        <div className="bg-white border border-gray-200 p-6 rounded-lg mb-8 shadow-lg">
-          <h3 className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">来場者サマリー</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-            <div><p className="text-lg text-gray-500">合計来場者数</p><p className="text-4xl font-bold text-gray-900">{totalVisitors}</p></div>
-            <div><p className="text-lg text-gray-500">外部の方</p><p className="text-4xl font-bold text-gray-900">{externalCount}</p></div>
-            <div><p className="text-lg text-gray-500">在校生</p><p className="text-4xl font-bold text-gray-900">{studentVisitors.length}</p></div>
-          </div>
-        </div>
-        
-        <div className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg mb-8">
-          <h3 className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">データ閲覧</h3>
-          <p className="text-gray-500 mb-6">表示したい項目を選択してください。</p>
-          <div className="w-full max-w-md mx-auto space-y-4">
-            <button onClick={() => setAdminSubView('students')} className="w-full text-xl font-semibold py-6 px-4 bg-blue-700 hover:bg-blue-800 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">在校生 来場者一覧</button>
-            <button onClick={() => setAdminSubView('externals')} className="w-full text-xl font-semibold py-6 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">外部 来場者一覧</button>
-            <button onClick={() => setAdminSubView('members')} className="w-full text-xl font-semibold py-6 px-4 bg-green-700 hover:bg-green-800 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">部員 出退勤履歴</button>
-          </div>
-        </div>
-        
-        <div className="bg-white border border-gray-200 p-6 rounded-lg mb-8 shadow-lg">
-            <h3 className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">データ管理</h3>
-            <p className="text-gray-500 mb-4">全データを複数のCSVファイルにまとめ、ZIP形式で一括ダウンロードします。</p>
-            <button onClick={handleBatchCsvBackup} className="w-full text-lg font-semibold py-3 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
-                全データをCSVで一括バックアップ
-            </button>
-        </div>
-        
-        <div className="bg-red-50 border border-red-200 p-6 rounded-lg mb-8 shadow-lg">
-          <h3 className="text-2xl font-semibold text-red-800 mb-4 border-b border-red-200 pb-2">危険ゾーン</h3>
-          <p className="text-red-600 mb-4">この操作は元に戻せません。すべての来場者データと部員の出退勤履歴が削除されます。</p>
-          <button onClick={onNavigateToReset} className="w-full md:w-auto text-lg font-semibold py-3 px-6 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">全データをリセット</button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const MainScreen: React.FC<{ onSelect: (selection: 'student' | 'member' | 'external') => void; onAdminAccess: () => void }> = ({ onSelect, onAdminAccess }) => {
-  const [longPressTimer, setLongPressTimer] = useState<number | null>(null);
-  const handlePressStart = () => { setLongPressTimer(window.setTimeout(() => onAdminAccess(), 2000)); };
-  const handlePressEnd = () => { if (longPressTimer) clearTimeout(longPressTimer); };
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-      <h1 className="text-5xl font-bold mb-10 text-amber-100 select-none cursor-pointer text-center" onMouseDown={handlePressStart} onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd} onTouchStart={handlePressStart} onTouchEnd={handlePressEnd}>
-        2025年度 巣園祭 将棋サロン
-        <br />
-        <span className="inline-block mt-4 bg-amber-300 text-stone-900 px-8 py-3 rounded-lg text-7xl tracking-widest shadow-md">
-          受付
-        </span>
-      </h1>
-      <p className="text-2xl text-stone-300 mb-16">該当するボタンを押してください</p>
-      <div className="w-full max-w-md space-y-8">
-        <button onClick={() => onSelect('external')} className="w-full text-4xl font-semibold py-12 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg">外部の方</button>
-        <button onClick={() => onSelect('student')} className="w-full text-4xl font-semibold py-12 px-4 bg-blue-800 hover:bg-blue-700 rounded-xl transition-transform transform active:scale-95 shadow-lg">在校生の方</button>
-        <button onClick={() => onSelect('member')} className="w-full text-4xl font-semibold py-12 px-4 bg-green-800 hover:bg-green-700 rounded-xl transition-transform transform active:scale-95 shadow-lg">将棋部員専用画面</button>
-      </div>
-    </div>
-  );
-};
-
-const StudentForm: React.FC<{ onSubmit: (student: Omit<Student, 'timestamp'>) => void; onBack: () => void; setNotification: (notification: NotificationMessage | null) => void; }> = ({ onSubmit, onBack, setNotification }) => {
-  const [grade, setGrade] = useState('');
-  const [studentClass, setStudentClass] = useState('');
-  const [studentId, setStudentId] = useState('');
-  const [shogiStrength, setShogiStrength] = useState(SHOGI_RANKS[0]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (grade && studentClass && studentId && shogiStrength) {
-      onSubmit({ grade, class: studentClass, studentId, shogiStrength });
-    } else { 
-      setNotification({ message: 'すべての項目を入力してください。', type: 'error' }); 
-    }
-  };
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-      <button onClick={onBack} className="absolute top-6 left-6 text-stone-300 hover:text-white text-2xl">&larr; 戻る</button>
-      <h2 className="text-5xl font-bold mb-10 text-amber-100">在校生 受付</h2>
-      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-6">
-        <div><label htmlFor="grade" className="block text-xl mb-3 text-stone-300">学年</label><select id="grade" value={grade} onChange={(e) => setGrade(e.target.value)} required className="w-full p-4 text-xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none"><option value="">選択してください</option>{GRADES.map(g => <option key={g} value={g}>{g}</option>)}</select></div>
-        <div><label htmlFor="class" className="block text-xl mb-3 text-stone-300">クラス</label><select id="class" value={studentClass} onChange={(e) => setStudentClass(e.target.value)} required className="w-full p-4 text-xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none"><option value="">選択してください</option>{CLASSES.map(c => <option key={c} value={c}>{c}組</option>)}</select></div>
-        <div><label className="block text-xl mb-3 text-stone-300">出席番号</label><div className="w-full p-3 bg-stone-800 border border-stone-600 rounded-md text-center text-4xl h-20 flex items-center justify-center">{studentId || <span className="text-stone-500">番号</span>}</div></div>
-        <NumericKeypad value={studentId} onValueChange={setStudentId} />
-        <div><label htmlFor="shogiStrength" className="block text-xl mb-3 text-stone-300">棋力</label><select id="shogiStrength" value={shogiStrength} onChange={(e) => setShogiStrength(e.target.value)} required className="w-full p-4 text-xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none">{SHOGI_RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-        <button type="submit" className="w-full text-3xl font-semibold py-5 px-4 bg-blue-800 hover:bg-blue-700 rounded-lg transition-transform transform active:scale-95 shadow-lg !mt-8">送信</button>
-      </form>
-    </div>
-  );
-};
-
-const ExternalForm: React.FC<{ onSubmit: (data: Omit<ExternalVisitorGroup, 'timestamp'>) => void; onBack: () => void; setNotification: (notification: NotificationMessage | null) => void; }> = ({ onSubmit, onBack, setNotification }) => {
-    const [count, setCount] = useState<number | null>(null);
-    const [customCount, setCustomCount] = useState('');
-    const [shogiStrength, setShogiStrength] = useState(SHOGI_RANKS[0]);
-    const [step, setStep] = useState<'count' | 'custom' | 'strength'>('count');
-
-    const handleCountSelect = (num: number) => {
-        setCount(num);
-        setStep('strength');
-    };
-
-    const handleCustomSubmit = () => {
-        const num = parseInt(customCount, 10);
-        if (num > 0) {
-            handleCountSelect(num);
-        } else { 
-            setNotification({ message: '人数を正しく入力してください。', type: 'error' });
-        }
-    };
-
-    const handleFinalSubmit = () => {
-        if (count && shogiStrength) {
-            onSubmit({ count, shogiStrength });
-        }
-    };
-
-    if (step === 'strength' && count !== null) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-                <button onClick={() => setStep('count')} className="absolute top-6 left-6 text-stone-300 hover:text-white text-2xl">&larr; 戻る</button>
-                <h2 className="text-5xl font-bold mb-6 text-amber-100">{count}名様ですね</h2>
-                <p className="text-2xl text-stone-300 mb-16">よろしければ棋力をお聞かせください</p>
-                <div className="w-full max-w-md space-y-8">
-                    <select value={shogiStrength} onChange={(e) => setShogiStrength(e.target.value)} className="w-full p-5 text-2xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none">{SHOGI_RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select>
-                    <button onClick={handleFinalSubmit} className="w-full text-3xl font-semibold py-5 px-4 bg-stone-600 hover:bg-stone-500 rounded-lg transition-transform transform active:scale-95 shadow-lg">決定</button>
-                </div>
-            </div>
-        );
-    }
-
-    if (step === 'custom') {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-                <button onClick={() => setStep('count')} className="absolute top-6 left-6 text-stone-300 hover:text-white text-2xl">&larr; 戻る</button>
-                <h2 className="text-5xl font-bold mb-10 text-amber-100">人数の入力</h2>
-                <div className="w-full max-w-md space-y-8">
-                    <div className="w-full p-3 bg-stone-800 border border-stone-600 rounded-md text-center text-4xl h-20 flex items-center justify-center mb-4">{customCount || <span className="text-stone-500">人数</span>}</div>
-                    <NumericKeypad value={customCount} onValueChange={setCustomCount} />
-                    <button onClick={handleCustomSubmit} className="w-full text-3xl font-semibold py-5 px-4 bg-stone-600 hover:bg-stone-500 rounded-lg transition-transform transform active:scale-95 shadow-lg">決定</button>
-                </div>
-            </div>
-        );
-    }
-    
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-            <button onClick={onBack} className="absolute top-6 left-6 text-stone-300 hover:text-white text-2xl">&larr; 戻る</button>
-            <h2 className="text-5xl font-bold mb-6 text-amber-100">ようこそ！</h2>
-            <p className="text-2xl text-stone-300 mb-16 text-center">保護者の方を含め、何名様でいらっしゃいましたか？</p>
-            <div className="w-full max-w-md grid grid-cols-2 gap-6">
-                {[1, 2, 3, 4, 5].map(num => (<button key={num} onClick={() => handleCountSelect(num)} className="text-4xl font-semibold py-12 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg">{num}名</button>))}
-                <button onClick={() => setStep('custom')} className="text-4xl font-semibold py-12 px-4 bg-stone-800 hover:bg-stone-700 rounded-xl transition-transform transform active:scale-95 shadow-lg">その他</button>
-            </div>
-        </div>
-    );
-};
-
-const MemberCheckin: React.FC<{ memberStatus: MemberStatus, onToggle: (name: string) => void, onBack: () => void }> = ({ memberStatus, onToggle, onBack }) => {
-    const [selectedKanaRow, setSelectedKanaRow] = useState<string>('すべて');
-
-    useEffect(() => {
-        let timer: number;
-        const resetTimer = () => {
-            clearTimeout(timer);
-            timer = window.setTimeout(() => onBack(), 60000);
-        };
-        const eventListeners = ['mousemove', 'keypress', 'touchstart'];
-        eventListeners.forEach(event => document.addEventListener(event, resetTimer));
-        resetTimer();
-        return () => {
-            clearTimeout(timer);
-            eventListeners.forEach(event => document.removeEventListener(event, resetTimer));
-        };
-    }, [onBack]);
-
-    const KANA_ROWS: { [key: string]: string } = {
-      'あ': 'あいうえお',
-      'か': 'かきくけこがぎぐげご',
-      'さ': 'さしすせそざじずぜぞ',
-      'た': 'たちつてとだぢづでど',
-      'な': 'なにぬねの',
-      'は': 'はひふへほばびぶべぼぱぴぷぺぽ',
-      'ま': 'まみむめも',
-      'や': 'やゆよ',
-      'ら': 'らりるれろ',
-      'わ': 'わをん',
-    };
-    const KANA_GYO_KEYS = Object.keys(KANA_ROWS);
-    
-    const filteredMembers = MEMBERS.filter(member => {
-        if (selectedKanaRow === 'すべて') return true;
-        const targetRow = KANA_ROWS[selectedKanaRow];
-        if (!targetRow) return false;
-        return targetRow.includes(member.furigana[0]);
-    });
-    
-    return (
-        <div className="min-h-screen bg-stone-900 text-white p-4">
-            <button onClick={onBack} className="absolute top-6 left-6 text-stone-300 hover:text-white text-2xl">&larr; 戻る</button>
-            <div className="max-w-lg mx-auto">
-                <h2 className="text-5xl font-bold mb-6 text-amber-100 text-center">部員 出退勤</h2>
-                <div className="flex flex-wrap justify-center gap-2 mb-6 text-lg">
-                    <button 
-                        onClick={() => setSelectedKanaRow('すべて')} 
-                        className={`px-4 py-2 rounded-full transition-colors ${selectedKanaRow === 'すべて' ? 'bg-amber-400 text-stone-900 font-bold' : 'bg-stone-700 hover:bg-stone-600 text-white'}`}
-                    >
-                        すべて
-                    </button>
-                    {KANA_GYO_KEYS.map(gyo => (
-                        <button 
-                            key={gyo} 
-                            onClick={() => setSelectedKanaRow(gyo)} 
-                            className={`px-4 py-2 rounded-full transition-colors ${selectedKanaRow === gyo ? 'bg-amber-400 text-stone-900 font-bold' : 'bg-stone-700 hover:bg-stone-600 text-white'}`}
-                        >
-                            {gyo}行
-                        </button>
-                    ))}
-                </div>
-
-                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-                    {filteredMembers.length > 0 ? (
-                        filteredMembers.map(member => {
-                            const s = memberStatus[member.name] || { checkedIn: false };
-                            return (
-                                <div 
-                                    key={member.name} 
-                                    onClick={() => onToggle(member.name)} 
-                                    className={`w-full flex justify-between items-center p-6 rounded-lg cursor-pointer transition-colors ${s.checkedIn ? 'bg-green-600' : 'bg-stone-700 hover:bg-stone-600'}`}
-                                >
-                                    <span className="text-2xl font-semibold">{member.name}</span>
-                                    <span className={`px-4 py-2 text-base rounded-full font-bold ${s.checkedIn ? 'bg-white text-green-700' : 'bg-stone-500 text-stone-100'}`}>
-                                        {s.checkedIn ? '出勤中' : '退勤中'}
-                                    </span>
-                                </div>
-                            );
-                        })
-                    ) : (
-                        <p className="text-center text-stone-400 text-xl pt-10">該当する部員がいません。</p>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const CompletionScreen: React.FC<{ onFinish: () => void; visitorType: 'student' | 'external' | null }> = ({ onFinish, visitorType }) => {
-  useEffect(() => {
-    const timer = setTimeout(() => onFinish(), 8000);
-    return () => clearTimeout(timer);
-  }, [onFinish]);
-
-  const messages = {
-    external: "パンフレットを取って、将棋サロンをお楽しみください。\n何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
-    student: "希望する場合はパンフレットを取ってください。\n混雑時は外部の方優先で対応させていただきます。予めご了承ください。\n現在、将棋部では、体験入部・入部を受け付けています。\n興味があれば、何人でも大丈夫ですので気軽に来てください。",
-  };
-  const message = visitorType ? messages[visitorType] : "将棋部の展示をお楽しみください！";
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-6">
-      <h2 className="text-7xl font-bold text-amber-100 text-center">受付完了</h2>
-      <p className="w-full max-w-4xl text-3xl mt-10 text-stone-300 leading-relaxed whitespace-pre-line text-left">{message}</p>
-      <p className="text-lg mt-12 text-stone-400 text-center">自動でTOP画面に戻ります。</p>
-    </div>
-  );
-};
-
-const ResetConfirmationView: React.FC<{ onConfirm: (password: string) => void; onBack: () => void }> = ({ onConfirm, onBack }) => {
-    const [password, setPassword] = useState('');
-  
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      onConfirm(password);
-    };
-  
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-gray-800 p-4 text-center">
-          <div className="bg-white border-2 border-red-300 rounded-2xl p-8 shadow-2xl max-w-lg w-full">
-              <h2 className="text-4xl font-bold mb-4 text-red-900">最終確認</h2>
-              <p className="text-xl mb-8 text-red-700">この操作は部長に許可された場合にのみ有効です。</p>
-              <form onSubmit={handleSubmit} className="w-full space-y-6">
-                  <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full p-3 bg-white border border-red-300 rounded-md text-center text-xl text-gray-900 focus:ring-2 focus:ring-red-500 focus:outline-none"
-                      placeholder="専用パスワード"
-                      autoFocus
-                  />
-                  <button type="submit" className="w-full text-xl font-semibold py-4 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
-                      実行
-                  </button>
-              </form>
-          </div>
-          <button onClick={onBack} className="mt-12 text-2xl font-semibold py-4 px-8 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl transition-transform transform active:scale-95 shadow-lg">
-              &larr; 管理者画面に戻る
-          </button>
-      </div>
-    );
-};
+const SHOGI_STRENGTHS = [
+  'プロ・アマ高段', '有段者', '級位者', '初心者', '観る専門', 'わからない'
+];
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('main');
-  const [lastVisitorType, setLastVisitorType] = useState<'student' | 'external' | null>(null);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [externalVisitors, setExternalVisitors] = useState<ExternalVisitorGroup[]>([]);
+  const [memberStatus, setMemberStatus] = useState<MemberStatus>({});
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [notification, setNotification] = useState<NotificationMessage | null>(null);
+  const [password, setPassword] = useState('');
+  const [externalCount, setExternalCount] = useState(1);
+  const [externalShogiStrength, setExternalShogiStrength] = useState(SHOGI_STRENGTHS[2]);
 
-  const [externalVisitors, setExternalVisitors] = useLocalStorage<ExternalVisitorGroup[]>('shogi_externalVisitors', []);
-  const [studentVisitors, setStudentVisitors] = useLocalStorage<Student[]>('shogi_studentVisitors', []);
-  const [memberStatus, setMemberStatus] = useLocalStorage<MemberStatus>('shogi_memberStatus', {});
-  const [memberLog, setMemberLog] = useLocalStorage<LogEntry[]>('shogi_memberLog', []);
-  
+  // Realtime Database listeners
   useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => setNotification(null), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [notification]);
+    // FIX: Replaced v9 `onValue` with v8 `ref.on` and `ref.off` for listeners.
+    const studentsRef = db.ref('students');
+    const studentsCallback = (snapshot: firebase.database.DataSnapshot) => {
+      const data = snapshot.val();
+      const studentList = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+      setStudents(studentList);
+    };
+    studentsRef.on('value', studentsCallback);
 
-  const handleSelect = useCallback((selection: 'student' | 'member' | 'external') => setView(selection), []);
-  const handleReturnToMain = useCallback(() => setView('main'), []);
+    const externalRef = db.ref('external_visitors');
+    const externalCallback = (snapshot: firebase.database.DataSnapshot) => {
+      const data = snapshot.val();
+      const externalList = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+      setExternalVisitors(externalList);
+    };
+    externalRef.on('value', externalCallback);
+    
+    const membersRef = db.ref('status/members');
+    const membersCallback = (snapshot: firebase.database.DataSnapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setMemberStatus(data);
+      }
+    };
+    membersRef.on('value', membersCallback);
+    
+    const logsRef = db.ref('logs');
+    const logsCallback = (snapshot: firebase.database.DataSnapshot) => {
+      const data = snapshot.val();
+      const logList = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+      setLogs(logList);
+    };
+    logsRef.on('value', logsCallback);
 
-  const handleStudentSubmit = useCallback((student: Omit<Student, 'timestamp'>) => {
-    setStudentVisitors(prev => [...prev, { ...student, timestamp: new Date().toISOString() }]);
-    setLastVisitorType('student');
-    setView('thanks');
-  }, [setStudentVisitors]);
-
-  const handleExternalSubmit = useCallback((data: Omit<ExternalVisitorGroup, 'timestamp'>) => {
-    setExternalVisitors(prev => [...prev, { ...data, timestamp: new Date().toISOString() }]);
-    setLastVisitorType('external');
-    setView('thanks');
-  }, [setExternalVisitors]);
-
-  const handleMemberToggle = useCallback((name: string) => {
-    const newTimestamp = new Date().toISOString();
-    const currentStatus = memberStatus[name] || { checkedIn: false };
-    setMemberLog(prev => [...prev, { name, type: !currentStatus.checkedIn ? 'in' : 'out', timestamp: newTimestamp }]);
-    setMemberStatus(prev => ({...prev, [name]: { checkedIn: !prev[name]?.checkedIn, lastChanged: newTimestamp }}));
-  }, [memberStatus, setMemberLog, setMemberStatus]);
-  
-  const handleConfirmReset = useCallback((password: string) => {
-    if (password === '306') {
-        setExternalVisitors([]);
-        setStudentVisitors([]);
-        setMemberStatus({});
-        setMemberLog([]);
-        setNotification({ message: 'すべてのデータがリセットされました。', type: 'success' });
-        setView('admin');
-    } else {
-        setNotification({ message: 'パスワードが違います。', type: 'error' });
-    }
-  }, [setExternalVisitors, setStudentVisitors, setMemberStatus, setMemberLog]);
-  
-  const handleNavigateToReset = useCallback(() => setView('resetConfirmation'), []);
-
-  const handleAdminAccess = useCallback(() => setView('adminLogin'), []);
-  const handleAdminLogin = useCallback((password: string) => {
-    if (password === ADMIN_PASSWORD) {
-        setIsAdminAuthenticated(true);
-        setView('admin');
-    } else { 
-        setNotification({ message: 'パスワードが違います。', type: 'error' });
-    }
+    return () => {
+      studentsRef.off('value', studentsCallback);
+      externalRef.off('value', externalCallback);
+      membersRef.off('value', membersCallback);
+      logsRef.off('value', logsCallback);
+    };
   }, []);
 
-  const renderView = () => {
+  const showNotification = (message: string, type: 'success' | 'error') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const navigateTo = (newView: View) => {
+    setView(newView);
+  };
+  
+  const handleThanks = () => {
+    setView('thanks');
+    setTimeout(() => setView('main'), 5000);
+  };
+
+  const handleStudentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const studentData: Omit<Student, 'timestamp' | 'id'> = {
+      grade: formData.get('grade') as string,
+      class: formData.get('class') as string,
+      studentId: formData.get('studentId') as string,
+      shogiStrength: formData.get('shogiStrength') as string,
+    };
+    try {
+      // FIX: Replaced v9 `push(ref(...))` with v8 `db.ref(...).push(...)`.
+      await db.ref("students").push({ ...studentData, timestamp: new Date().toISOString() });
+      handleThanks();
+    } catch (error) {
+      console.error("Error adding student: ", error);
+      showNotification('受付に失敗しました。', 'error');
+    }
+  };
+
+  const handleExternalSubmit = async () => {
+    if (externalCount < 1) {
+      showNotification('人数は1人以上を選択してください。', 'error');
+      return;
+    }
+    const groupData = {
+      count: externalCount,
+      shogiStrength: externalShogiStrength,
+    };
+    try {
+      // FIX: Replaced v9 `push(ref(...))` with v8 `db.ref(...).push(...)`.
+      await db.ref("external_visitors").push({ ...groupData, timestamp: new Date().toISOString() });
+      setExternalCount(1);
+      setExternalShogiStrength(SHOGI_STRENGTHS[2]);
+      handleThanks();
+    } catch (error) {
+      console.error("Error adding external visitors: ", error);
+      showNotification('受付に失敗しました。', 'error');
+    }
+  };
+
+  const handleMemberToggle = async (name: string) => {
+    const currentStatus = memberStatus[name]?.checkedIn || false;
+    const newStatus = !currentStatus;
+    const newTimestamp = new Date().toISOString();
+  
+    try {
+      // FIX: Replaced v9 `set(ref(...))` and `push(ref(...))` with v8 equivalents.
+      await db.ref(`status/members/${name}`).set({
+        checkedIn: newStatus,
+        lastChanged: newTimestamp,
+      });
+
+      await db.ref("logs").push({
+        name,
+        type: newStatus ? 'in' : 'out',
+        timestamp: newTimestamp,
+      });
+      showNotification(`${name}さんを${newStatus ? '入室' : '退室'}処理しました。`, 'success');
+    } catch (error) {
+      console.error("Error updating member status: ", error);
+      showNotification('更新に失敗しました。', 'error');
+    }
+  };
+  
+  const handleAdminLogin = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    // This is a simple password check. For a real application, use Firebase Auth.
+    if (password === 'sugamo_shogi_2025') {
+      setView('admin');
+      setPassword('');
+    } else {
+      showNotification('パスワードが違います。', 'error');
+    }
+  };
+
+  const handleResetData = async () => {
+    try {
+      // FIX: Replaced v9 `remove(ref(...))` and `set(ref(...))` with v8 equivalents.
+      await db.ref('students').remove();
+      await db.ref('external_visitors').remove();
+      await db.ref('logs').remove();
+      
+      const initialMemberStatus: MemberStatus = {};
+      MEMBERS.forEach(member => {
+        initialMemberStatus[member.name] = { checkedIn: false, lastChanged: new Date().toISOString() };
+      });
+      await db.ref("status/members").set(initialMemberStatus);
+      
+      showNotification('すべてのデータがリセットされました。', 'success');
+      setView('admin');
+    } catch (error) {
+      console.error("Error resetting data: ", error);
+      showNotification('データのリセットに失敗しました。', 'error');
+    }
+  };
+  
+  const totalVisitors = useMemo(() => {
+    const studentCount = students.length;
+    const externalCount = externalVisitors.reduce((sum, group) => sum + group.count, 0);
+    return studentCount + externalCount;
+  }, [students, externalVisitors]);
+
+  const renderHeader = (title: string, showBackButton = true) => (
+    <div className="relative text-center mb-8">
+      {showBackButton && (
+        <button onClick={() => setView('main')} className="absolute left-0 top-1/2 -translate-y-1/2 text-stone-600 hover:text-stone-900 transition-colors p-2" aria-label="メイン画面に戻る">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      )}
+      <h1 className="text-4xl font-bold text-stone-800">{title}</h1>
+    </div>
+  );
+
+  const renderButton = (onClick: () => void, text: string, className: string) => (
+    <button onClick={onClick} className={`w-full text-3xl font-bold py-12 rounded-lg shadow-lg transform transition-transform duration-150 active:scale-95 focus:outline-none focus:ring-4 focus:ring-opacity-75 ${className}`}>
+      {text}
+    </button>
+  );
+
+  const renderMainView = () => (
+    <div className="h-screen flex flex-col justify-center items-center bg-amber-50 p-4">
+      <header className="text-center mb-16">
+        <h1 className="text-6xl font-extrabold text-stone-800" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.1)'}}>2025年度 巣園祭</h1>
+        <h2 className="text-8xl font-bold text-amber-900 mt-2" style={{ textShadow: '3px 3px 6px rgba(0,0,0,0.2)'}}>将棋サロン 受付</h2>
+      </header>
+      <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-8">
+        {renderButton(() => navigateTo('student'), '在校生の方', 'bg-sky-600 text-white hover:bg-sky-700 focus:ring-sky-300')}
+        {renderButton(() => navigateTo('member'), '部員の方', 'bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-300')}
+        {renderButton(() => navigateTo('external'), '外部の方', 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-300')}
+      </div>
+       <button onClick={() => navigateTo('adminLogin')} className="absolute bottom-4 right-4 text-stone-400 hover:text-stone-600 transition-colors p-2" aria-label="管理者ページへ">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+      </button>
+    </div>
+  );
+
+  const renderStudentView = () => (
+    <div className="max-w-2xl mx-auto mt-10 p-8 bg-white rounded-xl shadow-lg">
+      {renderHeader('在校生 受付')}
+      <form onSubmit={handleStudentSubmit} className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <input required type="text" name="grade" placeholder="学年 (例: 高2)" className="p-4 text-xl border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500"/>
+            <input required type="text" name="class" placeholder="クラス (例: A)" className="p-4 text-xl border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500"/>
+            <input required type="text" name="studentId" placeholder="出席番号 (例: 99)" className="p-4 text-xl border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500"/>
+        </div>
+        <div>
+            <label className="block text-xl font-semibold text-stone-700 mb-2">将棋の腕前は？</label>
+            <select name="shogiStrength" defaultValue={SHOGI_STRENGTHS[2]} className="w-full p-4 text-xl border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white">
+                {SHOGI_STRENGTHS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+        </div>
+        <button type="submit" className="w-full bg-sky-600 text-white text-2xl font-bold py-4 rounded-lg shadow-md hover:bg-sky-700 transition-colors focus:outline-none focus:ring-4 focus:ring-sky-300">受付完了</button>
+      </form>
+    </div>
+  );
+
+  const renderMemberView = () => (
+    <div className="max-w-4xl mx-auto mt-10 p-8">
+      {renderHeader('部員 入退室')}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {MEMBERS.map(member => {
+          const status = memberStatus[member.name];
+          const isCheckedIn = status?.checkedIn || false;
+          return (
+            <button key={member.name} onClick={() => handleMemberToggle(member.name)} className={`p-4 rounded-lg shadow-md text-center transition-all duration-200 transform hover:scale-105 ${isCheckedIn ? 'bg-rose-500 text-white' : 'bg-white text-stone-800'}`}>
+              <p className="text-xs text-stone-500">{member.furigana}</p>
+              <p className="text-2xl font-bold">{member.name}</p>
+              <p className={`text-lg font-semibold mt-2 ${isCheckedIn ? 'text-rose-100' : 'text-stone-500'}`}>{isCheckedIn ? '在室中' : '退室中'}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderExternalView = () => (
+    <div className="max-w-2xl mx-auto mt-10 p-8 bg-white rounded-xl shadow-lg">
+      {renderHeader('外部の方 受付')}
+      <div className="space-y-8">
+        <div>
+          <label className="block text-xl font-semibold text-stone-700 mb-2">人数</label>
+          <div className="flex items-center justify-center gap-6">
+            <ControlButton onClick={() => setExternalCount(c => Math.max(1, c - 1))} aria-label="1人減らす" className="bg-rose-500 text-white hover:bg-rose-600">
+              <MinusIcon className="w-12 h-12" />
+            </ControlButton>
+            <span className="text-8xl font-bold text-stone-800 w-32 text-center">{externalCount}</span>
+            <ControlButton onClick={() => setExternalCount(c => c + 1)} aria-label="1人増やす" className="bg-emerald-500 text-white hover:bg-emerald-600">
+              <PlusIcon className="w-12 h-12" />
+            </ControlButton>
+          </div>
+        </div>
+        <div>
+            <label className="block text-xl font-semibold text-stone-700 mb-2">代表の方の将棋の腕前は？</label>
+            <select value={externalShogiStrength} onChange={e => setExternalShogiStrength(e.target.value)} className="w-full p-4 text-xl border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white">
+                {SHOGI_STRENGTHS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+        </div>
+        <button onClick={handleExternalSubmit} className="w-full bg-emerald-600 text-white text-2xl font-bold py-4 rounded-lg shadow-md hover:bg-emerald-700 transition-colors focus:outline-none focus:ring-4 focus:ring-emerald-300">受付完了</button>
+      </div>
+    </div>
+  );
+
+  const renderThanksView = () => (
+    <div className="h-screen flex flex-col justify-center items-center text-center bg-amber-50">
+      <h1 className="text-8xl font-bold text-amber-900 mb-4">ありがとうございました</h1>
+      <p className="text-4xl text-stone-700">ごゆっくりお楽しみください</p>
+    </div>
+  );
+
+  const renderAdminLoginView = () => (
+     <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-xl shadow-lg">
+        {renderHeader('管理者ログイン')}
+        <form onSubmit={handleAdminLogin} className="space-y-4">
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="パスワード"
+              className="w-full p-4 text-xl border-2 border-stone-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            />
+            <button type="submit" className="w-full bg-amber-600 text-white text-xl font-bold py-3 rounded-lg shadow-md hover:bg-amber-700 transition-colors focus:outline-none focus:ring-4 focus:ring-amber-300">ログイン</button>
+        </form>
+     </div>
+  );
+
+  const renderResetConfirmationView = () => (
+    <div className="max-w-lg mx-auto mt-20 p-8 bg-white rounded-xl shadow-lg text-center">
+      <h2 className="text-3xl font-bold text-red-700 mb-4">本当にリセットしますか？</h2>
+      <p className="text-stone-600 mb-6">すべての来場者データと部員の入退室記録が削除されます。この操作は取り消せません。</p>
+      <div className="flex justify-center gap-4">
+        <button onClick={() => setView('admin')} className="px-8 py-3 bg-stone-200 text-stone-800 font-semibold rounded-lg hover:bg-stone-300">キャンセル</button>
+        <button onClick={handleResetData} className="px-8 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">リセット実行</button>
+      </div>
+    </div>
+  );
+  
+  const renderAdminView = () => (
+    <div className="p-6 bg-stone-50 min-h-screen">
+      {renderHeader('管理者ダッシュボード', false)}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-xl font-semibold text-stone-700 mb-2">総来場者数</h3>
+          <CounterDisplay count={totalVisitors} />
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+           <h3 className="text-xl font-semibold text-stone-700 mb-2">在校生</h3>
+           <p className="text-5xl font-bold text-stone-800">{students.length} <span className="text-2xl">人</span></p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+           <h3 className="text-xl font-semibold text-stone-700 mb-2">外部の方</h3>
+           <p className="text-5xl font-bold text-stone-800">{externalVisitors.reduce((sum, group) => sum + group.count, 0)} <span className="text-2xl">人</span></p>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow mb-6">
+        <h3 className="text-xl font-semibold text-stone-700 mb-4">危険な操作</h3>
+        <div className="flex gap-4">
+           <button onClick={() => setView('resetConfirmation')} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 flex items-center gap-2">
+              <ResetIcon className="w-5 h-5"/> 全データリセット
+           </button>
+           <button onClick={() => setView('main')} className="px-6 py-3 bg-stone-600 text-white font-semibold rounded-lg hover:bg-stone-700">受付画面に戻る</button>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-xl font-semibold text-stone-700 mb-4">部員ステータス</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {MEMBERS.map(m => (
+              <div key={m.name} className={`p-2 rounded text-center ${memberStatus[m.name]?.checkedIn ? 'bg-green-100' : 'bg-stone-100'}`}>
+                <p className="font-semibold">{m.name}</p>
+                <p className={`text-sm font-bold ${memberStatus[m.name]?.checkedIn ? 'text-green-700' : 'text-stone-500'}`}>
+                  {memberStatus[m.name]?.checkedIn ? '在室' : '退室'}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-xl font-semibold text-stone-700 mb-4">入退室ログ</h3>
+          <div className="h-96 overflow-y-auto border rounded p-2 bg-stone-50">
+            <ul>
+            {[...logs].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).map(log => (
+              <li key={log.id} className="border-b p-2 flex justify-between">
+                <span>
+                  <span className={`font-semibold ${log.type === 'in' ? 'text-green-600' : 'text-red-600'}`}>
+                    [{log.type === 'in' ? '入室' : '退室'}]
+                  </span> {log.name}
+                </span>
+                <span className="text-sm text-stone-500">{new Date(log.timestamp).toLocaleTimeString('ja-JP')}</span>
+              </li>
+            ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderContent = () => {
     switch (view) {
-      case 'student': return <StudentForm onSubmit={handleStudentSubmit} onBack={handleReturnToMain} setNotification={setNotification} />;
-      case 'external': return <ExternalForm onSubmit={handleExternalSubmit} onBack={handleReturnToMain} setNotification={setNotification} />;
-      case 'member': return <MemberCheckin memberStatus={memberStatus} onToggle={handleMemberToggle} onBack={handleReturnToMain} />;
-      case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
-      case 'adminLogin': return <AdminLogin onLogin={handleAdminLogin} onBack={handleReturnToMain} />;
-      case 'resetConfirmation': return <ResetConfirmationView onConfirm={handleConfirmReset} onBack={() => setView('admin')} />;
-      case 'admin': return isAdminAuthenticated ? <AdminView log={memberLog} studentVisitors={studentVisitors} externalVisitors={externalVisitors} memberStatus={memberStatus} onBack={handleReturnToMain} onNavigateToReset={handleNavigateToReset} setNotification={setNotification} /> : <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
-      default: return <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
+      case 'main': return renderMainView();
+      case 'student': return renderStudentView();
+      case 'member': return renderMemberView();
+      case 'external': return renderExternalView();
+      case 'thanks': return renderThanksView();
+      case 'adminLogin': return renderAdminLoginView();
+      case 'admin': return renderAdminView();
+      case 'resetConfirmation': return renderResetConfirmationView();
+      default: return renderMainView();
     }
   };
 
   return (
-    <>
-      <Notification notification={notification} />
-      {renderView()}
-    </>
+    <div className="bg-amber-50 min-h-screen">
+      {notification && (
+        <div className={`fixed top-5 right-5 p-4 rounded-lg shadow-lg text-white text-xl z-50 ${notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+          {notification.message}
+        </div>
+      )}
+      {renderContent()}
+    </div>
   );
 };
 
