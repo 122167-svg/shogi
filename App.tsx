@@ -327,9 +327,14 @@ const StudentForm: React.FC<{ onSubmit: (student: Omit<Student, 'timestamp'>) =>
   const [studentId, setStudentId] = useState('');
   const [shogiStrength, setShogiStrength] = useState(SHOGI_RANKS[0]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasAgreed, setHasAgreed] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasAgreed) {
+      setNotification({ message: '個人情報の取り扱いに同意してください。', type: 'error' });
+      return;
+    }
     if (grade && studentClass && studentId && shogiStrength) {
       setIsLoading(true);
       setTimeout(() => {
@@ -350,10 +355,31 @@ const StudentForm: React.FC<{ onSubmit: (student: Omit<Student, 'timestamp'>) =>
         <div><label id="student-id-label" className="block text-xl mb-3 text-stone-300">出席番号</label><div role="status" aria-labelledby="student-id-label" className="w-full p-3 bg-stone-800 border border-stone-600 rounded-md text-center text-5xl h-24 flex items-center justify-center">{studentId || <span className="text-stone-500">番号</span>}</div></div>
         <NumericKeypad value={studentId} onValueChange={setStudentId} />
         <div><label htmlFor="shogiStrength" className="block text-xl mb-3 text-stone-300">棋力</label><select id="shogiStrength" value={shogiStrength} onChange={(e) => setShogiStrength(e.target.value)} required aria-required="true" className="w-full p-5 text-2xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none">{SHOGI_RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+        
+        <div className="!mt-8 p-4 bg-stone-800 border border-stone-700 rounded-lg text-stone-300 space-y-4">
+          <h3 className="text-lg font-semibold text-white">個人情報の取り扱いについて</h3>
+          <p className="text-sm leading-relaxed">
+            ご記入いただいた個人情報（クラス・番号）は、以下の目的にのみ利用させていただきます。<br />
+            ・文化祭で何か問題が発生した場合のご連絡
+          </p>
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input 
+              type="checkbox"
+              id="privacy-agreement"
+              checked={hasAgreed}
+              onChange={(e) => setHasAgreed(e.target.checked)}
+              className="h-6 w-6 rounded bg-stone-700 border-stone-500 text-blue-600 focus:ring-blue-500"
+              aria-describedby="privacy-policy-text"
+            />
+            <span id="privacy-policy-text" className="text-stone-200">上記の利用目的に同意します。</span>
+          </label>
+        </div>
+
         <button
           type="submit"
-          disabled={isLoading}
-          className="w-full text-4xl font-semibold py-6 px-4 bg-blue-800 hover:bg-blue-700 rounded-lg transition-transform transform active:scale-95 shadow-lg !mt-8 flex items-center justify-center disabled:bg-blue-900 disabled:cursor-not-allowed"
+          disabled={isLoading || !hasAgreed}
+          className="w-full text-4xl font-semibold py-6 px-4 bg-blue-800 hover:bg-blue-700 rounded-lg transition-transform transform active:scale-95 shadow-lg flex items-center justify-center disabled:bg-stone-700 disabled:cursor-not-allowed disabled:text-stone-400"
+          aria-disabled={isLoading || !hasAgreed}
         >
           {isLoading ? <LoadingSpinner /> : '送信'}
         </button>
@@ -397,7 +423,7 @@ const ExternalForm: React.FC<{ onSubmit: (data: Omit<ExternalVisitorGroup, 'time
             <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
                 <button onClick={() => setStep('count')} className="absolute top-6 left-6 text-stone-300 hover:text-white text-3xl p-2 rounded-full transition-transform transform active:scale-95" aria-label="人数選択に戻る">&larr; 戻る</button>
                 <h2 className="text-5xl font-bold mb-6 text-amber-100">{count}名様ですね</h2>
-                <p className="text-2xl text-stone-300 mb-16">よろしければ棋力をお聞かせください</p>
+                <p className="text-2xl text-stone-300 mb-16 text-center">グループの中で最も棋力が高い方のものを選択してください。</p>
                 <div className="w-full max-w-md space-y-8">
                     <label htmlFor="shogiStrengthExternal" className="sr-only">棋力</label>
                     <select id="shogiStrengthExternal" value={shogiStrength} onChange={(e) => setShogiStrength(e.target.value)} className="w-full p-6 text-3xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none">{SHOGI_RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select>
