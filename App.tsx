@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 
 declare const JSZip: any;
@@ -314,7 +315,7 @@ const MainScreen: React.FC<{ onSelect: (selection: 'student' | 'external') => vo
       </h1>
       <p className="text-2xl text-stone-300 mb-16">該当するボタンを押してください</p>
       <div className="w-full max-w-md space-y-8">
-        <button onClick={() => onSelect('external')} className="w-full text-5xl font-semibold py-16 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label="外部の方はこちら">外部の方</button>
+        <button onClick={() => onSelect('external')} className="w-full text-4xl font-semibold py-10 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg whitespace-pre-line" aria-label="外部の方、在校生保護者の方、OBの方はこちら">{'外部の方\n在校生保護者の方\nOBの方'}</button>
         <button onClick={() => onSelect('student')} className="w-full text-5xl font-semibold py-16 px-4 bg-blue-800 hover:bg-blue-700 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label="在校生の方はこちら">在校生の方</button>
       </div>
     </div>
@@ -457,7 +458,7 @@ const ExternalForm: React.FC<{ onSubmit: (data: Omit<ExternalVisitorGroup, 'time
         <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
             <button onClick={onBack} className="absolute top-6 left-6 text-stone-300 hover:text-white text-3xl p-2 rounded-full transition-transform transform active:scale-95" aria-label="メイン画面に戻る">&larr; 戻る</button>
             <h2 className="text-5xl font-bold mb-6 text-amber-100">ようこそ！</h2>
-            <p className="text-2xl text-stone-300 mb-16 text-center">保護者の方を含め、何名様でいらっしゃいましたか？</p>
+            <p className="text-2xl text-stone-300 mb-16 text-center">全部で何名様でいらっしゃいましたか？</p>
             <div className="w-full max-w-md grid grid-cols-2 gap-6">
                 {[1, 2, 3, 4, 5].map(num => (<button key={num} onClick={() => handleCountSelect(num)} className="text-5xl font-semibold py-16 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label={`${num}名`}>{num}名</button>))}
                 <button onClick={() => setStep('custom')} className="text-5xl font-semibold py-16 px-4 bg-stone-800 hover:bg-stone-700 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label="その他の人数">その他</button>
@@ -530,7 +531,7 @@ const App: React.FC = () => {
   const [studentVisitors, setStudentVisitors] = useLocalStorage<Student[]>('shogi_studentVisitors', []);
   
   const defaultMessages = {
-    external: "パンフレットを取って、将棋サロンをお楽しみください。\n何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
+    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレット取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員との対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
     student: "希望する場合はパンフレットを受け取ってください。\n※簡単な戦法研究や詰将棋が掲載されているので、周りの人より強くなりたいという人はぜひ読んでみて下さい！\n混雑時は外部の方優先で対応させていただきます。\n移動などをお願いする場合がありますが、将棋部員の指示に従ってください。\nご理解・ご協力をお願いします。\n現在、将棋部では体験入部・入部を受け付けています。\n興味があれば、人数は問いませんので気軽に来て下さい！",
   };
   const [customMessages, setCustomMessages] = useLocalStorage<{ student: string; external: string }>('shogi_customMessages', defaultMessages);
