@@ -531,7 +531,7 @@ const App: React.FC = () => {
   const [studentVisitors, setStudentVisitors] = useLocalStorage<Student[]>('shogi_studentVisitors', []);
   
   const defaultMessages = {
-    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレット取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員との対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
+    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレットを取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員との対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
     student: "希望する場合はパンフレットを受け取ってください。\n※簡単な戦法研究や詰将棋が掲載されているので、周りの人より強くなりたいという人はぜひ読んでみて下さい！\n混雑時は外部の方優先で対応させていただきます。\n移動などをお願いする場合がありますが、将棋部員の指示に従ってください。\nご理解・ご協力をお願いします。\n現在、将棋部では体験入部・入部を受け付けています。\n興味があれば、人数は問いませんので気軽に来て下さい！",
   };
   const [customMessages, setCustomMessages] = useLocalStorage<{ student: string; external: string }>('shogi_customMessages', defaultMessages);
