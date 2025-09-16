@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext, createContext } from 'react';
 
 declare const JSZip: any;
 
 // ========== データ型定義 ==========
-type View = 'main' | 'student' | 'thanks' | 'admin' | 'external' | 'adminLogin' | 'resetConfirmation';
+type View = 'main' | 'student' | 'thanks' | 'admin' | 'external' | 'parent' | 'ob' | 'adminLogin' | 'resetConfirmation';
 
 interface Student {
   grade: string;
@@ -18,13 +18,37 @@ interface ExternalVisitorGroup {
   shogiStrength: string;
   timestamp: string;
 }
+interface ParentVisitorGroup {
+  count: number;
+  shogiStrength: string;
+  sonInClub: boolean;
+  timestamp: string;
+}
+interface AlumniVisitorGroup {
+  count: number;
+  shogiStrength: string;
+  wasInClub: boolean;
+  timestamp: string;
+}
+interface TeacherVisitor {
+    timestamp: string;
+}
+
 type NotificationMessage = { message: string; type: 'success' | 'error' };
+type VisitorType = 'student' | 'external' | 'parent' | 'ob' | 'teacher' | null;
 
 // ========== 事前定義データ ==========
 const GRADES = ['中1', '中2', '中3', '高1', '高2', '高3'];
 const CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
 const SHOGI_RANKS = ['特にない', '11級以下', '10級', '9級', '8級', '7級', '6級', '5級', '4級', '3級', '2級', '1級', '初段', '二段', '三段', '四段以上'];
 const ADMIN_PASSWORD = 'shogi';
+const defaultMessages = {
+    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレットを取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員との対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
+    student: "希望する場合はパンフレットを受け取ってください。\n※簡単な戦法研究や詰将棋が掲載されているので、周りの人より強くなりたいという人はぜひ読んでみて下さい！\n混雑時は外部の方優先で対応させていただきます。\n移動などをお願いする場合がありますが、将棋部員の指示に従ってください。\nご理解・ご協力をお願いします。\n現在、将棋部では体験入部・入部を受け付けています。\n興味があれば、人数は問いませんので気軽に来て下さい！",
+    parent: "将棋サロンへようこそ！将棋部の雰囲気をお楽しみください。何かご不明な点がございましたら、お近くの部員までお声がけください。",
+    ob: "希望される場合は、パンフレット（赤:有段者用　青：級位者用）を取ってください。\nお時間がありましたら、ぜひ現役部員との対局もお楽しみください。",
+    teacher: "ご来場ありがとうございます。将棋サロンをお楽しみください。"
+};
 
 // ========== カスタムフック ==========
 function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
@@ -50,6 +74,138 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
 }
 
 
+// ========== 状態管理 (Context API) ==========
+interface VisitorContextType {
+  studentVisitors: Student[];
+  externalVisitors: ExternalVisitorGroup[];
+  parentVisitors: ParentVisitorGroup[];
+  alumniVisitors: AlumniVisitorGroup[];
+  teacherVisitors: TeacherVisitor[];
+  customMessages: Record<string, string>;
+  notification: NotificationMessage | null;
+  setNotification: (notification: NotificationMessage | null) => void;
+  setCustomMessages: (messages: Record<string, string>) => void;
+  handleStudentSubmit: (students: Omit<Student, 'timestamp'>[]) => void;
+  handleExternalSubmit: (data: { count: number, shogiStrength: string }) => void;
+  handleParentSubmit: (data: { count: number, shogiStrength: string, extraAnswer: boolean }) => void;
+  handleAlumniSubmit: (data: { count: number, shogiStrength: string, extraAnswer: boolean }) => void;
+  handleTeacherSubmit: () => void;
+  handleDeleteVisitor: (visitorType: 'students' | 'externals' | 'parents' | 'alumni' | 'teachers', timestamp: string) => void;
+  handleConfirmReset: (password: string) => void;
+  handleAdminLogin: (password: string) => void;
+}
+
+const VisitorContext = createContext<VisitorContextType | undefined>(undefined);
+
+const VisitorProvider: React.FC<{
+    children: React.ReactNode;
+    setView: React.Dispatch<React.SetStateAction<View>>;
+    setLastVisitorType: React.Dispatch<React.SetStateAction<VisitorType>>;
+    setIsAdminAuthenticated: React.Dispatch<React.SetStateAction<boolean>>;
+}> = ({ children, setView, setLastVisitorType, setIsAdminAuthenticated }) => {
+    const [notification, setNotification] = useState<NotificationMessage | null>(null);
+    const [externalVisitors, setExternalVisitors] = useLocalStorage<ExternalVisitorGroup[]>('shogi_externalVisitors', []);
+    const [studentVisitors, setStudentVisitors] = useLocalStorage<Student[]>('shogi_studentVisitors', []);
+    const [parentVisitors, setParentVisitors] = useLocalStorage<ParentVisitorGroup[]>('shogi_parentVisitors', []);
+    const [alumniVisitors, setAlumniVisitors] = useLocalStorage<AlumniVisitorGroup[]>('shogi_alumniVisitors', []);
+    const [teacherVisitors, setTeacherVisitors] = useLocalStorage<TeacherVisitor[]>('shogi_teacherVisitors', []);
+    const [customMessages, setCustomMessages] = useLocalStorage<Record<string, string>>('shogi_customMessages', defaultMessages);
+
+    useEffect(() => {
+        if (notification) {
+            const timer = setTimeout(() => setNotification(null), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [notification]);
+
+    const handleStudentSubmit = useCallback((students: Omit<Student, 'timestamp'>[]) => {
+        const timestamp = new Date().toISOString();
+        const newVisitors = students.map(s => ({ ...s, timestamp }));
+        setStudentVisitors(prev => [...prev, ...newVisitors]);
+        setLastVisitorType('student');
+        setView('thanks');
+    }, [setStudentVisitors, setView, setLastVisitorType]);
+    
+    const handleExternalSubmit = useCallback((data: { count: number, shogiStrength: string }) => {
+        setExternalVisitors(prev => [...prev, { ...data, timestamp: new Date().toISOString() }]);
+        setLastVisitorType('external');
+        setView('thanks');
+    }, [setExternalVisitors, setView, setLastVisitorType]);
+
+    const handleParentSubmit = useCallback((data: { count: number, shogiStrength: string, extraAnswer: boolean }) => {
+        const newVisitor: Omit<ParentVisitorGroup, 'timestamp'> = { count: data.count, shogiStrength: data.shogiStrength, sonInClub: data.extraAnswer };
+        setParentVisitors(prev => [...prev, { ...newVisitor, timestamp: new Date().toISOString() }]);
+        setLastVisitorType('parent');
+        setView('thanks');
+    }, [setParentVisitors, setView, setLastVisitorType]);
+
+    const handleAlumniSubmit = useCallback((data: { count: number, shogiStrength: string, extraAnswer: boolean }) => {
+        const newVisitor: Omit<AlumniVisitorGroup, 'timestamp'> = { count: data.count, shogiStrength: data.shogiStrength, wasInClub: data.extraAnswer };
+        setAlumniVisitors(prev => [...prev, { ...newVisitor, timestamp: new Date().toISOString() }]);
+        setLastVisitorType('ob');
+        setView('thanks');
+    }, [setAlumniVisitors, setView, setLastVisitorType]);
+
+    const handleTeacherSubmit = useCallback(() => {
+        setTeacherVisitors(prev => [...prev, { timestamp: new Date().toISOString() }]);
+        setLastVisitorType('teacher');
+        setView('thanks');
+    }, [setTeacherVisitors, setView, setLastVisitorType]);
+    
+    const handleConfirmReset = useCallback((password: string) => {
+        if (password === '306') {
+            setExternalVisitors([]);
+            setStudentVisitors([]);
+            setParentVisitors([]);
+            setAlumniVisitors([]);
+            setTeacherVisitors([]);
+            setNotification({ message: 'すべてのデータがリセットされました。', type: 'success' });
+            setView('admin');
+        } else {
+            setNotification({ message: 'パスワードが違います。', type: 'error' });
+        }
+    }, [setExternalVisitors, setStudentVisitors, setParentVisitors, setAlumniVisitors, setTeacherVisitors, setView]);
+    
+    const handleAdminLogin = useCallback((password: string) => {
+        if (password === ADMIN_PASSWORD) {
+            setIsAdminAuthenticated(true);
+            setView('admin');
+        } else {
+            setNotification({ message: 'パスワードが違います。', type: 'error' });
+        }
+    }, [setIsAdminAuthenticated, setView]);
+
+    const handleDeleteVisitor = useCallback((visitorType: 'students' | 'externals' | 'parents' | 'alumni' | 'teachers', timestamp: string) => {
+        if (window.confirm('この来場者データを本当に削除しますか？この操作は元に戻せません。')) {
+            switch (visitorType) {
+                case 'students': setStudentVisitors(prev => prev.filter(v => v.timestamp !== timestamp)); break;
+                case 'externals': setExternalVisitors(prev => prev.filter(v => v.timestamp !== timestamp)); break;
+                case 'parents': setParentVisitors(prev => prev.filter(v => v.timestamp !== timestamp)); break;
+                case 'alumni': setAlumniVisitors(prev => prev.filter(v => v.timestamp !== timestamp)); break;
+                case 'teachers': setTeacherVisitors(prev => prev.filter(v => v.timestamp !== timestamp)); break;
+            }
+            setNotification({ message: 'データを削除しました。', type: 'success' });
+        }
+    }, [setStudentVisitors, setExternalVisitors, setParentVisitors, setAlumniVisitors, setTeacherVisitors]);
+
+    const value = {
+        studentVisitors, externalVisitors, parentVisitors, alumniVisitors, teacherVisitors,
+        customMessages, notification, setNotification, setCustomMessages,
+        handleStudentSubmit, handleExternalSubmit, handleParentSubmit, handleAlumniSubmit, handleTeacherSubmit,
+        handleDeleteVisitor, handleConfirmReset, handleAdminLogin
+    };
+
+    return <VisitorContext.Provider value={value}>{children}</VisitorContext.Provider>;
+};
+
+const useVisitorContext = () => {
+    const context = useContext(VisitorContext);
+    if (context === undefined) {
+        throw new Error('useVisitorContext must be used within a VisitorProvider');
+    }
+    return context;
+};
+
 // ========== UIコンポーネント ==========
 
 const LoadingSpinner: React.FC = () => (
@@ -62,10 +218,16 @@ const LoadingSpinner: React.FC = () => (
   </div>
 );
 
+const BackButton: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = "戻る" }) => (
+    <button onClick={onClick} className="absolute top-6 left-6 text-stone-200 bg-stone-700 hover:bg-stone-600 text-3xl p-4 rounded-full shadow-lg transition-transform transform active:scale-95 flex items-center justify-center z-20" aria-label={label}>
+      &larr;
+    </button>
+);
 
-const Notification: React.FC<{ notification: NotificationMessage | null }> = ({ notification }) => {
+const Notification: React.FC = () => {
+  const { notification } = useVisitorContext();
   if (!notification) return null;
-  const baseStyle = "fixed bottom-8 left-1/2 -translate-x-1/2 py-3 px-6 rounded-lg shadow-2xl text-white z-[100] text-lg";
+  const baseStyle = "fixed bottom-8 left-1/2 -translate-x-1/2 py-3 px-6 rounded-lg shadow-2xl text-white z-[100] text-xl";
   const typeStyle = notification.type === 'success' ? 'bg-green-600' : 'bg-red-700';
   return (
     <div className={`${baseStyle} ${typeStyle}`} role="alert" aria-live="assertive">
@@ -76,15 +238,15 @@ const Notification: React.FC<{ notification: NotificationMessage | null }> = ({ 
 
 const NumericKeypad: React.FC<{ value: string; onValueChange: (value: string) => void }> = ({ value, onValueChange }) => {
   const handleKeyPress = (key: string) => {
-    if (value.length >= 3) return;
+    if (value.length >= 2) return;
     onValueChange(value + key);
   };
   const handleBackspace = () => onValueChange(value.slice(0, -1));
   const handleClear = () => onValueChange('');
-  const buttonClass = "w-full h-24 bg-stone-700 hover:bg-stone-600 rounded-lg text-5xl font-bold flex items-center justify-center transition-transform transform active:scale-95 text-white";
+  const buttonClass = "w-full h-28 bg-stone-700 hover:bg-stone-600 rounded-lg text-6xl font-bold flex items-center justify-center transition-transform transform active:scale-95 text-white";
 
   return (
-    <div className="w-full max-w-xs mx-auto grid grid-cols-3 gap-3">
+    <div className="w-full max-w-sm mx-auto grid grid-cols-3 gap-4">
       {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => (
         <button key={key} type="button" onClick={() => handleKeyPress(key)} className={buttonClass} aria-label={`数字 ${key}`}>{key}</button>
       ))}
@@ -95,18 +257,19 @@ const NumericKeypad: React.FC<{ value: string; onValueChange: (value: string) =>
   );
 };
 
-const AdminLogin: React.FC<{ onLogin: (password: string) => void; onBack: () => void }> = ({ onLogin, onBack }) => {
+const AdminLogin: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [password, setPassword] = useState('');
+    const { handleAdminLogin } = useVisitorContext();
   
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      onLogin(password);
+      handleAdminLogin(password);
     };
   
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-gray-800 p-4">
-        <button onClick={onBack} className="absolute top-4 left-4 text-gray-500 hover:text-gray-800 text-xl p-2 rounded-full transition-transform transform active:scale-95" aria-label="メイン画面に戻る">&larr; 戻る</button>
-        <h2 id="admin-login-title" className="text-3xl font-bold mb-8 text-gray-900">管理者ログイン</h2>
+        <button onClick={onBack} className="absolute top-4 left-4 text-gray-500 hover:text-gray-800 text-2xl p-3 rounded-full transition-transform transform active:scale-95" aria-label="メイン画面に戻る">&larr; 戻る</button>
+        <h2 id="admin-login-title" className="text-4xl font-bold mb-8 text-gray-900">管理者ログイン</h2>
         <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6" aria-labelledby="admin-login-title">
           <label htmlFor="admin-password" className="sr-only">パスワード</label>
           <input
@@ -114,11 +277,11 @@ const AdminLogin: React.FC<{ onLogin: (password: string) => void; onBack: () => 
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-3 bg-white border border-gray-300 rounded-md text-center text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full p-4 bg-white border border-gray-300 rounded-md text-center text-gray-900 text-2xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
             placeholder="パスワード"
             aria-required="true"
           />
-          <button type="submit" className="w-full text-2xl font-semibold py-5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
+          <button type="submit" className="w-full text-3xl font-semibold py-5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
             ログイン
           </button>
         </form>
@@ -126,61 +289,60 @@ const AdminLogin: React.FC<{ onLogin: (password: string) => void; onBack: () => 
     );
 };
 
-const AdminView: React.FC<{
-  studentVisitors: Student[];
-  externalVisitors: ExternalVisitorGroup[];
-  onBack: () => void;
-  onNavigateToReset: () => void;
-  setNotification: (notification: NotificationMessage | null) => void;
-  customMessages: { student: string; external: string };
-  setCustomMessages: (messages: { student: string; external: string }) => void;
-}> = ({ studentVisitors, externalVisitors, onBack, onNavigateToReset, setNotification, customMessages, setCustomMessages }) => {
-  const [adminSubView, setAdminSubView] = useState<'menu' | 'students' | 'externals'>('menu');
-  const [editedStudentMessage, setEditedStudentMessage] = useState(customMessages.student);
-  const [editedExternalMessage, setEditedExternalMessage] = useState(customMessages.external);
+const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }> = ({ onBack, onNavigateToReset }) => {
+  const { studentVisitors, externalVisitors, parentVisitors, alumniVisitors, teacherVisitors, setNotification, handleDeleteVisitor, customMessages, setCustomMessages } = useVisitorContext();
+  const [adminSubView, setAdminSubView] = useState<'menu' | 'students' | 'externals' | 'parents' | 'alumni' | 'teachers'>('menu');
+  const [editedMessages, setEditedMessages] = useState(customMessages);
+  
   const externalCount = externalVisitors.reduce((sum, group) => sum + group.count, 0);
-  const totalVisitors = externalCount + studentVisitors.length;
+  const parentCount = parentVisitors.reduce((sum, group) => sum + group.count, 0);
+  const alumniCount = alumniVisitors.reduce((sum, group) => sum + group.count, 0);
+  const teacherCount = teacherVisitors.length;
+  const totalVisitors = externalCount + studentVisitors.length + parentCount + alumniCount + teacherCount;
 
   const handleSaveMessages = () => {
-    setCustomMessages({ student: editedStudentMessage, external: editedExternalMessage });
+    setCustomMessages(editedMessages);
     setNotification({ message: '完了メッセージを保存しました。', type: 'success' });
   };
-
+  
   const handleBatchCsvBackup = () => {
     try {
       const zip = new JSZip();
-
       const convertToCsv = (data: any[], headers: Record<string, string>): string => {
         const headerKeys = Object.keys(headers);
         const headerValues = Object.values(headers);
         const csvRows = [headerValues.join(',')];
         for (const row of data) {
-            const values = headerKeys.map(key => {
-                let value = row[key];
-                if (value === null || value === undefined) value = '';
-                const stringValue = String(value);
-                if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-                    return `"${stringValue.replace(/"/g, '""')}"`;
-                }
-                return stringValue;
-            });
-            csvRows.push(values.join(','));
+          const values = headerKeys.map(key => {
+            let value = row[key];
+            if (typeof value === 'boolean') value = value ? 'はい' : 'いいえ';
+            if (value === null || value === undefined) value = '';
+            const stringValue = String(value);
+            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+              return `"${stringValue.replace(/"/g, '""')}"`;
+            }
+            return stringValue;
+          });
+          csvRows.push(values.join(','));
         }
         return '\uFEFF' + csvRows.join('\r\n');
       };
 
-      if (studentVisitors.length > 0) {
-        const studentCsv = convertToCsv(studentVisitors.map(s => ({...s, timestamp: new Date(s.timestamp).toLocaleString('ja-JP')})), { timestamp: '受付日時', grade: '学年', class: 'クラス', studentId: '出席番号', shogiStrength: '棋力' });
-        zip.file('在校生来場者.csv', studentCsv);
-      }
+      const processVisitorData = (visitors: any[], fileName: string, headers: Record<string, string>) => {
+        if (visitors.length > 0) {
+            const csvData = convertToCsv(visitors.map(v => ({...v, timestamp: new Date(v.timestamp).toLocaleString('ja-JP')})), headers);
+            zip.file(`${fileName}.csv`, csvData);
+        }
+      };
 
-      if (externalVisitors.length > 0) {
-        const externalCsv = convertToCsv(externalVisitors.map(e => ({...e, timestamp: new Date(e.timestamp).toLocaleString('ja-JP')})), { timestamp: '受付日時', count: '人数', shogiStrength: '棋力' });
-        zip.file('外部来場者.csv', externalCsv);
-      }
+      processVisitorData(studentVisitors, '在校生来場者', { timestamp: '受付日時', grade: '学年', class: 'クラス', studentId: '出席番号', shogiStrength: '棋力' });
+      processVisitorData(externalVisitors, '外部来場者', { timestamp: '受付日時', count: '人数', shogiStrength: '棋力' });
+      processVisitorData(parentVisitors, '保護者来場者', { timestamp: '受付日時', count: '人数', shogiStrength: '棋力', sonInClub: 'ご子息は将棋部員か' });
+      processVisitorData(alumniVisitors, 'OB来場者', { timestamp: '受付日時', count: '人数', shogiStrength: '棋力', wasInClub: '在校時将棋部員か' });
+      processVisitorData(teacherVisitors, '教職員来場者', { timestamp: '受付日時' });
       
       zip.generateAsync({ type: 'blob' }).then((blob: any) => {
-        if (blob.size === 0) {
+        if (Object.keys(zip.files).length === 0) {
           setNotification({ message: 'エクスポートするデータがありません。', type: 'error' });
           return;
         }
@@ -204,23 +366,37 @@ const AdminView: React.FC<{
 
 
   if (adminSubView !== 'menu') {
-    const listTitle: { [key: string]: string } = {
-        students: '在校生 来場者一覧',
-        externals: '外部 来場者一覧',
+    const titles: Record<string, string> = { students: '在校生', externals: '外部', parents: '保護者', alumni: 'OB', teachers: '教職員' };
+    const listTitle = `${titles[adminSubView]} 来場者一覧`;
+
+    const dataMap: Record<string, any[]> = {
+        students: studentVisitors, externals: externalVisitors, parents: parentVisitors, alumni: alumniVisitors, teachers: teacherVisitors,
     };
+    const currentData = dataMap[adminSubView];
+    
+    const headers: Record<string, JSX.Element> = {
+        students: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">学年</th><th scope="col" className="p-2">クラス</th><th scope="col" className="p-2">番号</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2 text-right">操作</th></>,
+        externals: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2 text-right">操作</th></>,
+        parents: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2">子息が部員</th><th scope="col" className="p-2 text-right">操作</th></>,
+        alumni: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2">元部員</th><th scope="col" className="p-2 text-right">操作</th></>,
+        teachers: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2 text-right">操作</th></>,
+    };
+    const rowRenderers: Record<string, (item: any) => JSX.Element> = {
+        students: (s) => <tr key={s.timestamp} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(s.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{s.grade}</td><td className="p-2">{s.class}</td><td className="p-2">{s.studentId}</td><td className="p-2">{s.shogiStrength}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('students', s.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(s.timestamp).toLocaleString('ja-JP')}の在校生データを削除`}>削除</button></td></tr>,
+        externals: (g) => <tr key={g.timestamp} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(g.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{g.count}名</td><td className="p-2">{g.shogiStrength}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('externals', g.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(g.timestamp).toLocaleString('ja-JP')}の外部来場者データを削除`}>削除</button></td></tr>,
+        parents: (p) => <tr key={p.timestamp} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(p.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{p.count}名</td><td className="p-2">{p.shogiStrength}</td><td className="p-2">{p.sonInClub ? 'はい' : 'いいえ'}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('parents', p.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(p.timestamp).toLocaleString('ja-JP')}の保護者データを削除`}>削除</button></td></tr>,
+        alumni: (a) => <tr key={a.timestamp} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(a.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{a.count}名</td><td className="p-2">{a.shogiStrength}</td><td className="p-2">{a.wasInClub ? 'はい' : 'いいえ'}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('alumni', a.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(a.timestamp).toLocaleString('ja-JP')}のOBデータを削除`}>削除</button></td></tr>,
+        teachers: (t) => <tr key={t.timestamp} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(t.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('teachers', t.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(t.timestamp).toLocaleString('ja-JP')}の教職員データを削除`}>削除</button></td></tr>,
+    };
+
     return (
       <div className="min-h-screen bg-gray-100 text-gray-800 p-4">
-        <button onClick={() => setAdminSubView('menu')} className="fixed top-4 left-4 text-gray-600 hover:text-gray-900 z-10 bg-white/80 backdrop-blur-sm border border-gray-300 rounded-full px-5 py-3 text-lg hover:bg-gray-50 transition-transform transform active:scale-95" aria-label="管理者メニューに戻る">&larr; 管理者メニューに戻る</button>
-        <div className="max-w-6xl mx-auto pt-16">
+        <button onClick={() => setAdminSubView('menu')} className="fixed top-4 left-4 text-gray-600 hover:text-gray-900 z-10 bg-white/80 backdrop-blur-sm border border-gray-300 rounded-full px-5 py-3 text-xl hover:bg-gray-50 transition-transform transform active:scale-95" aria-label="管理者メニューに戻る">&larr; 管理者メニューに戻る</button>
+        <div className="max-w-6xl mx-auto pt-20">
           <div className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg">
-            <h3 className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">{listTitle[adminSubView]}</h3>
+            <h3 className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">{listTitle}</h3>
             <div className="max-h-[75vh] overflow-y-auto">
-              {adminSubView === 'students' && (
-                studentVisitors.length === 0 ? <p className="text-center text-gray-500 py-4">在校生の来場者はいません。</p> : <table className="w-full text-left"><thead className="sticky top-0 bg-gray-50"><tr><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">学年</th><th scope="col" className="p-2">クラス</th><th scope="col" className="p-2">番号</th><th scope="col" className="p-2">棋力</th></tr></thead><tbody>{studentVisitors.slice().reverse().map((s, i) => (<tr key={i} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(s.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{s.grade}</td><td className="p-2">{s.class}</td><td className="p-2">{s.studentId}</td><td className="p-2">{s.shogiStrength}</td></tr>))}</tbody></table>
-              )}
-              {adminSubView === 'externals' && (
-                externalVisitors.length === 0 ? <p className="text-center text-gray-500 py-4">外部の来場者はいません。</p> : <table className="w-full text-left"><thead className="sticky top-0 bg-gray-50"><tr><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th></tr></thead><tbody>{externalVisitors.slice().reverse().map((g, i) => (<tr key={i} className="border-t border-gray-200"><td className="p-2 text-sm text-gray-600">{new Date(g.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{g.count}名</td><td className="p-2">{g.shogiStrength}</td></tr>))}</tbody></table>
-              )}
+              {currentData.length === 0 ? <p className="text-center text-gray-500 py-4 text-xl">来場者はいません。</p> : <table className="w-full text-left text-xl"><thead className="sticky top-0 bg-gray-50"><tr>{headers[adminSubView]}</tr></thead><tbody>{currentData.slice().reverse().map(rowRenderers[adminSubView])}</tbody></table>}
             </div>
           </div>
         </div>
@@ -230,191 +406,301 @@ const AdminView: React.FC<{
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 p-4">
-      <button onClick={onBack} className="fixed top-4 left-4 text-gray-600 hover:text-gray-900 z-10 bg-white/80 backdrop-blur-sm border border-gray-300 rounded-full px-5 py-3 text-lg hover:bg-gray-50 transition-transform transform active:scale-95">&larr; 戻る</button>
-      <div className="max-w-4xl mx-auto pt-12 pb-8">
-        <h2 className="text-3xl font-bold mb-8 text-gray-900 text-center">管理者画面</h2>
-        
+      <button onClick={onBack} className="fixed top-4 left-4 text-gray-600 hover:text-gray-900 z-10 bg-white/80 backdrop-blur-sm border border-gray-300 rounded-full px-5 py-3 text-xl hover:bg-gray-50 transition-transform transform active:scale-95">&larr; 戻る</button>
+      <div className="max-w-4xl mx-auto pt-16 pb-8">
+        <h2 className="text-5xl font-bold mb-8 text-gray-900 text-center">管理者画面</h2>
         <section className="bg-white border border-gray-200 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="summary-title">
-          <h3 id="summary-title" className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">来場者サマリー</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-            <div><p className="text-lg text-gray-500">合計来場者数</p><p className="text-4xl font-bold text-gray-900">{totalVisitors}</p></div>
-            <div><p className="text-lg text-gray-500">外部の方</p><p className="text-4xl font-bold text-gray-900">{externalCount}</p></div>
-            <div><p className="text-lg text-gray-500">在校生</p><p className="text-4xl font-bold text-gray-900">{studentVisitors.length}</p></div>
+          <h3 id="summary-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">来場者サマリー</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+            <div><p className="text-2xl text-gray-500">合計</p><p className="text-5xl font-bold text-gray-900">{totalVisitors}</p></div>
+            <div><p className="text-2xl text-gray-500">在校生</p><p className="text-5xl font-bold text-gray-900">{studentVisitors.length}</p></div>
+            <div><p className="text-2xl text-gray-500">外部・他</p><p className="text-5xl font-bold text-gray-900">{externalCount + parentCount + alumniCount}</p></div>
+            <div><p className="text-2xl text-gray-500">教職員</p><p className="text-5xl font-bold text-gray-900">{teacherCount}</p></div>
           </div>
         </section>
-        
         <section className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg mb-8" aria-labelledby="data-view-title">
-          <h3 id="data-view-title" className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">データ閲覧</h3>
-          <p className="text-gray-500 mb-6">表示したい項目を選択してください。</p>
-          <div className="w-full max-w-md mx-auto space-y-4">
-            <button onClick={() => setAdminSubView('students')} className="w-full text-3xl font-semibold py-8 px-4 bg-blue-700 hover:bg-blue-800 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">在校生 来場者一覧</button>
-            <button onClick={() => setAdminSubView('externals')} className="w-full text-3xl font-semibold py-8 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">外部 来場者一覧</button>
+          <h3 id="data-view-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">データ閲覧</h3>
+          <p className="text-xl text-gray-500 mb-6">表示したい項目を選択してください。</p>
+          <div className="w-full grid grid-cols-2 md:grid-cols-3 gap-4">
+            <button onClick={() => setAdminSubView('students')} className="text-3xl font-semibold py-8 px-4 bg-blue-700 hover:bg-blue-800 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">在校生</button>
+            <button onClick={() => setAdminSubView('parents')} className="text-3xl font-semibold py-8 px-4 bg-green-700 hover:bg-green-800 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">保護者</button>
+            <button onClick={() => setAdminSubView('alumni')} className="text-3xl font-semibold py-8 px-4 bg-purple-700 hover:bg-purple-800 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">OB</button>
+            <button onClick={() => setAdminSubView('externals')} className="text-3xl font-semibold py-8 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">外部</button>
+            <button onClick={() => setAdminSubView('teachers')} className="text-3xl font-semibold py-8 px-4 bg-orange-700 hover:bg-orange-800 text-white rounded-xl transition-transform transform active:scale-95 shadow-lg">教職員</button>
           </div>
         </section>
-        
         <section className="bg-white border border-gray-200 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="data-manage-title">
-            <h3 id="data-manage-title" className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">データ管理</h3>
-            <p className="text-gray-500 mb-4">全データを複数のCSVファイルにまとめ、ZIP形式で一括ダウンロードします。</p>
-            <button onClick={handleBatchCsvBackup} className="w-full text-xl font-semibold py-4 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
+            <h3 id="data-manage-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">データ管理</h3>
+            <p className="text-xl text-gray-500 mb-4">全データを複数のCSVファイルにまとめ、ZIP形式で一括ダウンロードします。</p>
+            <button onClick={handleBatchCsvBackup} className="w-full text-2xl font-semibold py-5 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
                 全データをCSVで一括バックアップ
             </button>
         </section>
-
         <section className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg mb-8" aria-labelledby="message-edit-title">
-            <h3 id="message-edit-title" className="text-2xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">完了メッセージの編集</h3>
-            <p className="text-gray-500 mb-6">受付完了画面に表示されるメッセージをカスタマイズできます。</p>
+            <h3 id="message-edit-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">完了メッセージの編集</h3>
             <div className="space-y-6">
-                <div>
-                    <label htmlFor="studentMessage" className="block text-lg font-medium text-gray-700 mb-2">在校生向けメッセージ</label>
-                    <textarea
-                        id="studentMessage"
-                        rows={5}
-                        className="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        value={editedStudentMessage}
-                        onChange={(e) => setEditedStudentMessage(e.target.value)}
-                    />
-                </div>
-                <div>
-                    <label htmlFor="externalMessage" className="block text-lg font-medium text-gray-700 mb-2">外部向けメッセージ</label>
-                    <textarea
-                        id="externalMessage"
-                        rows={5}
-                        className="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        value={editedExternalMessage}
-                        onChange={(e) => setEditedExternalMessage(e.target.value)}
-                    />
-                </div>
-                <button onClick={handleSaveMessages} className="w-full text-xl font-semibold py-4 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
+                {Object.keys(editedMessages).map(key => (
+                    <div key={key}>
+                        <label htmlFor={`${key}Message`} className="block text-xl font-medium text-gray-700 mb-2 capitalize">{key}</label>
+                        <textarea id={`${key}Message`} rows={5} className="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 text-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value={editedMessages[key]} onChange={(e) => setEditedMessages(prev => ({ ...prev, [key]: e.target.value }))} />
+                    </div>
+                ))}
+                <button onClick={handleSaveMessages} className="w-full text-2xl font-semibold py-4 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
                     メッセージを保存
                 </button>
             </div>
         </section>
-        
         <section className="bg-red-50 border border-red-200 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="danger-zone-title">
-          <h3 id="danger-zone-title" className="text-2xl font-semibold text-red-800 mb-4 border-b border-red-200 pb-2">危険ゾーン</h3>
-          <p className="text-red-600 mb-4">この操作は元に戻せません。すべての来場者データが削除されます。</p>
-          <button onClick={onNavigateToReset} className="w-full md:w-auto text-xl font-semibold py-4 px-8 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">全データをリセット</button>
+          <h3 id="danger-zone-title" className="text-3xl font-semibold text-red-800 mb-4 border-b border-red-200 pb-2">危険ゾーン</h3>
+          <p className="text-xl text-red-600 mb-4">この操作は元に戻せません。すべての来場者データが削除されます。</p>
+          <button onClick={onNavigateToReset} className="w-full md:w-auto text-2xl font-semibold py-4 px-8 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">全データをリセット</button>
         </section>
       </div>
     </div>
   );
 };
 
-const MainScreen: React.FC<{ onSelect: (selection: 'student' | 'external') => void; onAdminAccess: () => void; }> = ({ onSelect, onAdminAccess }) => {
+const MainScreen: React.FC<{ onSelect: (selection: 'student' | 'external' | 'parent' | 'ob' | 'teacher') => void; onAdminAccess: () => void; }> = ({ onSelect, onAdminAccess }) => {
   const [longPressTimer, setLongPressTimer] = useState<number | null>(null);
   const handlePressStart = () => { setLongPressTimer(window.setTimeout(() => onAdminAccess(), 2000)); };
   const handlePressEnd = () => { if (longPressTimer) clearTimeout(longPressTimer); };
+
+  const iconProps = { className: "h-16 w-16 mb-4", strokeWidth: 1.5 };
+  const StudentIcon = () => <svg {...iconProps} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>;
+  const ExternalIcon = () => <svg {...iconProps} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m-7.5-2.962a3.75 3.75 0 100-7.5 3.75 3.75 0 000 7.5zM3 13.249a9.087 9.087 0 019 0responsive" /></svg>;
+  const ParentIcon = () => <svg {...iconProps} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>;
+  const AlumniIcon = () => <svg {...iconProps} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0l-.07.002z" /></svg>;
+  const TeacherIcon = () => <svg {...iconProps} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.07a2.25 2.25 0 01-2.25 2.25h-13.5a2.25 2.25 0 01-2.25-2.25v-4.07m18 0a2.25 2.25 0 00-2.25-2.25h-13.5a2.25 2.25 0 00-2.25 2.25m18 0v-4.879a2.25 2.25 0 00-.916-1.788l-2.258-1.41a2.25 2.25 0 01-1.788-.916V4.5a2.25 2.25 0 00-2.25-2.25h-5.25a2.25 2.25 0 00-2.25 2.25v1.076c0 .493-.16.973-.448 1.382l-2.022 2.923a2.25 2.25 0 00-.916 1.788v4.879" /></svg>;
+  
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-      <h1 className="text-5xl font-bold mb-10 text-amber-100 select-none cursor-pointer text-center" onMouseDown={handlePressStart} onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd} onTouchStart={handlePressStart} onTouchEnd={handlePressEnd} aria-label="タイトル。2秒間長押しで管理者ログイン">
-        2025年度 巣園祭 将棋サロン
-        <br />
-        <span className="inline-block mt-4 bg-amber-300 text-stone-900 px-8 py-3 rounded-lg text-7xl tracking-widest shadow-md">
-          受付
-        </span>
+      <h1 className="text-6xl font-bold mb-10 text-amber-100 select-none cursor-pointer text-center" onMouseDown={handlePressStart} onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd} onTouchStart={handlePressStart} onTouchEnd={handlePressEnd} aria-label="タイトル。2秒間長押しで管理者ログイン">
+        2025年度 巣園祭 将棋サロン<br />
+        <span className="inline-block mt-4 bg-amber-300 text-stone-900 px-8 py-3 rounded-lg text-8xl tracking-widest shadow-md">受付</span>
       </h1>
-      <p className="text-2xl text-stone-300 mb-16">該当するボタンを押してください</p>
-      <div className="w-full max-w-md space-y-8">
-        <button onClick={() => onSelect('external')} className="w-full text-4xl font-semibold py-10 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg whitespace-pre-line" aria-label="外部の方、在校生保護者の方、OBの方はこちら">{'外部の方\n在校生保護者の方\nOBの方'}</button>
-        <button onClick={() => onSelect('student')} className="w-full text-5xl font-semibold py-16 px-4 bg-blue-800 hover:bg-blue-700 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label="在校生の方はこちら">在校生の方</button>
+      <p className="text-3xl text-stone-200 mb-16">該当するボタンを押してください</p>
+      <div className="w-full max-w-5xl space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <button onClick={() => onSelect('student')} className="flex flex-col items-center justify-center text-4xl font-semibold py-16 px-4 bg-blue-800 hover:bg-blue-700 rounded-xl transition-transform transform active:scale-95 shadow-lg"><StudentIcon />在校生の方</button>
+          <button onClick={() => onSelect('external')} className="flex flex-col items-center justify-center text-4xl font-semibold py-16 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg"><ExternalIcon />外部の方</button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <button onClick={() => onSelect('parent')} className="flex flex-col items-center justify-center text-3xl font-semibold py-10 px-4 bg-green-800 hover:bg-green-700 rounded-xl transition-transform transform active:scale-95 shadow-lg"><ParentIcon />在校生保護者の方</button>
+          <button onClick={() => onSelect('ob')} className="flex flex-col items-center justify-center text-3xl font-semibold py-10 px-4 bg-purple-800 hover:bg-purple-700 rounded-xl transition-transform transform active:scale-95 shadow-lg"><AlumniIcon />OBの方</button>
+          <button onClick={() => onSelect('teacher')} className="flex flex-col items-center justify-center text-3xl font-semibold py-10 px-4 bg-orange-800 hover:bg-orange-700 rounded-xl transition-transform transform active:scale-95 shadow-lg"><TeacherIcon />本校教職員の方</button>
+        </div>
       </div>
     </div>
   );
 };
 
-const StudentForm: React.FC<{ onSubmit: (student: Omit<Student, 'timestamp'>) => void; onBack: () => void; setNotification: (notification: NotificationMessage | null) => void; }> = ({ onSubmit, onBack, setNotification }) => {
+const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
+  const { handleStudentSubmit, setNotification } = useVisitorContext();
+  type StudentInput = Omit<Student, 'timestamp' | 'shogiStrength'>;
+  
+  const [step, setStep] = useState<'count' | 'input' | 'strength' | 'confirm'>('count');
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [studentsData, setStudentsData] = useState<StudentInput[]>([]);
   const [grade, setGrade] = useState('');
   const [studentClass, setStudentClass] = useState('');
   const [studentId, setStudentId] = useState('');
   const [shogiStrength, setShogiStrength] = useState(SHOGI_RANKS[0]);
-  const [isLoading, setIsLoading] = useState(false);
   const [hasAgreed, setHasAgreed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!hasAgreed) {
-      setNotification({ message: '個人情報の取り扱いに同意してください。', type: 'error' });
-      return;
-    }
-    if (grade && studentClass && studentId && shogiStrength) {
-      setIsLoading(true);
-      setTimeout(() => {
-        onSubmit({ grade, class: studentClass, studentId, shogiStrength });
-      }, 500);
-    } else { 
-      setNotification({ message: 'すべての項目を入力してください。', type: 'error' }); 
-    }
+  const resetCurrentStudentForm = () => { setGrade(''); setStudentClass(''); setStudentId(''); };
+  
+  const loadStudentData = (index: number) => {
+    const data = studentsData[index];
+    if(data) { setGrade(data.grade); setStudentClass(data.class); setStudentId(data.studentId); } 
+    else { resetCurrentStudentForm(); }
   };
+
+  const handleCountSelect = (count: number) => {
+    setTotalStudents(count);
+    if (studentsData.length !== count) {
+      setStudentsData(Array.from({ length: count }, (_, i) => studentsData[i] || { grade: '', class: '', studentId: '' }));
+    }
+    setStep('input');
+    setCurrentIndex(0);
+    loadStudentData(0);
+  };
+
+  const saveCurrentStudent = () => {
+    const updatedStudents = [...studentsData];
+    updatedStudents[currentIndex] = { grade, class: studentClass, studentId };
+    setStudentsData(updatedStudents);
+  };
+
+  const handleNext = () => {
+    if (!grade) { setNotification({ message: '学年を選択してください。', type: 'error' }); return; }
+    if (!studentClass) { setNotification({ message: 'クラスを選択してください。', type: 'error' }); return; }
+    if (!studentId || studentId.length === 0 || studentId.length > 2) { setNotification({ message: '出席番号を1桁または2桁で入力してください。', type: 'error' }); return; }
+    saveCurrentStudent();
+    if (isEditing) { setIsEditing(false); setStep('confirm'); return; }
+    if (currentIndex < totalStudents - 1) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      loadStudentData(nextIndex);
+    } else { setStep('strength'); }
+  };
+  
+  const handleBack = () => {
+    saveCurrentStudent();
+    if (isEditing) { setIsEditing(false); setStep('confirm'); return; }
+    if (currentIndex > 0) {
+      const prevIndex = currentIndex - 1;
+      setCurrentIndex(prevIndex);
+      loadStudentData(prevIndex);
+    } else { setStep('count'); }
+  };
+
+  const handleEdit = (indexToEdit: number) => {
+    saveCurrentStudent();
+    setIsEditing(true);
+    setCurrentIndex(indexToEdit);
+    loadStudentData(indexToEdit);
+    setStep('input');
+  };
+
+  const handleFinalSubmit = () => {
+    if (!hasAgreed) { setNotification({ message: '個人情報の取り扱いに同意してください。', type: 'error' }); return; }
+    setIsLoading(true);
+    setTimeout(() => {
+      const finalStudents = studentsData.map(s => ({ ...s, shogiStrength }));
+      handleStudentSubmit(finalStudents);
+    }, 500);
+  };
+  
+  if (step === 'count') {
+    return (
+       <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
+            <BackButton onClick={onBack} label="メイン画面に戻る" />
+            <h2 className="text-6xl font-bold mb-6 text-amber-100">在校生 受付</h2>
+            <p className="text-3xl text-stone-200 mb-16 text-center">全部で何名様でいらっしゃいましたか？</p>
+            <div className="w-full max-w-2xl grid grid-cols-3 gap-6">
+                {[1, 2, 3, 4, 5].map(num => (<button key={num} onClick={() => handleCountSelect(num)} className="text-6xl font-semibold py-20 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label={`${num}名`}>{num}名</button>))}
+                 <div className="flex items-center justify-center text-3xl text-stone-400 text-center">6名様以上の場合は、<br/>5名以下のグループに分かれて<br/>受付をお願いします。</div>
+            </div>
+        </div>
+    );
+  }
+  
+  if (step === 'strength') {
+     return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
+            <BackButton onClick={() => {saveCurrentStudent(); setStep('input');}} />
+            <h2 className="text-6xl font-bold mb-6 text-amber-100">代表者の棋力</h2>
+            <p className="text-3xl text-stone-200 mb-16 text-center">グループの中で最も棋力が高い方のものを選択してください。</p>
+            <div className="w-full max-w-md space-y-8">
+                <label htmlFor="shogiStrengthStudent" className="sr-only">棋力</label>
+                <select id="shogiStrengthStudent" value={shogiStrength} onChange={(e) => setShogiStrength(e.target.value)} className="w-full p-6 text-4xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none">{SHOGI_RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                <button onClick={() => setStep('confirm')} className="w-full text-5xl font-semibold py-8 px-4 bg-stone-600 hover:bg-stone-500 rounded-lg transition-transform transform active:scale-95 shadow-lg flex items-center justify-center">確認画面へ</button>
+            </div>
+        </div>
+    );
+  }
+  
+  if (step === 'confirm') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
+        <BackButton onClick={() => setStep('strength')} label="入力画面に戻る" />
+        <h2 className="text-6xl font-bold mb-8 text-amber-100">入力内容の確認</h2>
+        <div className="w-full max-w-2xl bg-stone-800 p-6 rounded-lg space-y-1 text-3xl mb-8 border border-stone-700">
+            {studentsData.map((s, i) => (
+                <div key={i} className="flex justify-between items-center border-b border-stone-700 py-3">
+                    <span>{i + 1}人目: {s.grade} {s.class}組 {s.studentId}番</span>
+                    <button onClick={() => handleEdit(i)} className="text-xl bg-stone-600 hover:bg-stone-500 px-4 py-2 rounded-lg transition-transform transform active:scale-95">編集</button>
+                </div>
+            ))}
+             <div className="pt-3"><strong className="text-stone-400">代表者の棋力:</strong> {shogiStrength}</div>
+        </div>
+        <div className="w-full max-w-2xl p-6 bg-stone-800 border border-stone-700 rounded-lg text-stone-200 space-y-4 mb-8">
+          <h3 className="text-3xl font-semibold text-white text-center">個人情報の取り扱いについて</h3>
+          <p className="text-xl leading-relaxed text-stone-300">ご記入いただいた個人情報（クラス・番号）は、文化祭で何か問題が発生した場合のご連絡にのみ利用させていただきます。</p>
+          <label className="flex items-center justify-center space-x-4 cursor-pointer pt-3">
+            <input type="checkbox" id="privacy-agreement-confirm" checked={hasAgreed} onChange={(e) => setHasAgreed(e.target.checked)} className="h-8 w-8 rounded bg-stone-700 border-stone-500 text-blue-600 focus:ring-blue-500"/>
+            <span id="privacy-policy-text-confirm" className="text-stone-100 text-2xl">上記の利用目的に同意します。</span>
+          </label>
+        </div>
+        <button onClick={handleFinalSubmit} disabled={isLoading || !hasAgreed} className="w-full max-w-2xl text-5xl font-semibold py-8 px-4 bg-blue-800 hover:bg-blue-700 rounded-lg transition-transform transform active:scale-95 shadow-lg flex items-center justify-center disabled:bg-stone-700 disabled:cursor-not-allowed disabled:text-stone-400">
+          {isLoading ? <LoadingSpinner /> : '同意して送信'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-      <button onClick={onBack} className="absolute top-6 left-6 text-stone-300 hover:text-white text-3xl p-2 rounded-full transition-transform transform active:scale-95" aria-label="戻る">&larr; 戻る</button>
-      <h2 className="text-5xl font-bold mb-10 text-amber-100">在校生 受付</h2>
-      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-6">
-        <div><label htmlFor="grade" className="block text-xl mb-3 text-stone-300">学年</label><select id="grade" value={grade} onChange={(e) => setGrade(e.target.value)} required aria-required="true" className="w-full p-5 text-2xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none"><option value="">選択してください</option>{GRADES.map(g => <option key={g} value={g}>{g}</option>)}</select></div>
-        <div><label htmlFor="class" className="block text-xl mb-3 text-stone-300">クラス</label><select id="class" value={studentClass} onChange={(e) => setStudentClass(e.target.value)} required aria-required="true" className="w-full p-5 text-2xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none"><option value="">選択してください</option>{CLASSES.map(c => <option key={c} value={c}>{c}組</option>)}</select></div>
-        <div><label id="student-id-label" className="block text-xl mb-3 text-stone-300">出席番号</label><div role="status" aria-labelledby="student-id-label" className="w-full p-3 bg-stone-800 border border-stone-600 rounded-md text-center text-5xl h-24 flex items-center justify-center">{studentId || <span className="text-stone-500">番号</span>}</div></div>
-        <NumericKeypad value={studentId} onValueChange={setStudentId} />
-        <div><label htmlFor="shogiStrength" className="block text-xl mb-3 text-stone-300">棋力</label><select id="shogiStrength" value={shogiStrength} onChange={(e) => setShogiStrength(e.target.value)} required aria-required="true" className="w-full p-5 text-2xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none">{SHOGI_RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-        
-        <div className="!mt-8 p-4 bg-stone-800 border border-stone-700 rounded-lg text-stone-300 space-y-4">
-          <h3 className="text-lg font-semibold text-white">個人情報の取り扱いについて</h3>
-          <p className="text-sm leading-relaxed">
-            ご記入いただいた個人情報（クラス・番号）は、以下の目的にのみ利用させていただきます。<br />
-            ・文化祭で何か問題が発生した場合のご連絡
-          </p>
-          <label className="flex items-center space-x-3 cursor-pointer">
-            <input 
-              type="checkbox"
-              id="privacy-agreement"
-              checked={hasAgreed}
-              onChange={(e) => setHasAgreed(e.target.checked)}
-              className="h-6 w-6 rounded bg-stone-700 border-stone-500 text-blue-600 focus:ring-blue-500"
-              aria-describedby="privacy-policy-text"
-            />
-            <span id="privacy-policy-text" className="text-stone-200">上記の利用目的に同意します。</span>
-          </label>
+        <BackButton onClick={handleBack} />
+        <h2 className="text-6xl font-bold mb-4 text-amber-100">在校生 受付</h2>
+        <p className="text-4xl text-stone-200 mb-8">{currentIndex + 1}人目 / {totalStudents}人</p>
+        <div className="w-full max-w-md space-y-6">
+            <div>
+                <label className="block text-2xl mb-2 text-stone-300">学年</label>
+                <div className="grid grid-cols-3 gap-2">{GRADES.map(g => <button type="button" key={g} onClick={() => setGrade(g)} className={`p-4 text-xl rounded-md transition ${grade === g ? 'bg-amber-400 text-stone-900 font-bold' : 'bg-stone-700 hover:bg-stone-600 text-stone-100'}`}>{g}</button>)}</div>
+            </div>
+            <div>
+                <label className="block text-2xl mb-2 text-stone-300">クラス</label>
+                <div className="grid grid-cols-4 gap-2">{CLASSES.map(c => <button type="button" key={c} onClick={() => setStudentClass(c)} className={`p-4 text-xl rounded-md transition ${studentClass === c ? 'bg-amber-400 text-stone-900 font-bold' : 'bg-stone-700 hover:bg-stone-600 text-stone-100'}`}>{c}</button>)}</div>
+            </div>
+            <div>
+                <label id="student-id-label" className="block text-2xl mb-2 text-stone-300">出席番号</label>
+                <div role="status" aria-labelledby="student-id-label" className="w-full p-3 bg-stone-800 border border-stone-600 rounded-md text-center text-5xl h-20 flex items-center justify-center mb-2">{studentId || <span className="text-stone-500">番号</span>}</div>
+                <NumericKeypad value={studentId} onValueChange={setStudentId} />
+            </div>
         </div>
-
-        <button
-          type="submit"
-          disabled={isLoading || !hasAgreed}
-          className="w-full text-4xl font-semibold py-6 px-4 bg-blue-800 hover:bg-blue-700 rounded-lg transition-transform transform active:scale-95 shadow-lg flex items-center justify-center disabled:bg-stone-700 disabled:cursor-not-allowed disabled:text-stone-400"
-          aria-disabled={isLoading || !hasAgreed}
-        >
-          {isLoading ? <LoadingSpinner /> : '送信'}
-        </button>
-      </form>
+        <div className="w-full max-w-md mt-8">
+            <button onClick={handleNext} className="w-full text-4xl font-semibold py-6 px-4 bg-blue-800 hover:bg-blue-700 rounded-lg transition-transform transform active:scale-95 shadow-lg flex items-center justify-center">
+                 {isEditing ? '編集を完了' : (currentIndex < totalStudents - 1 ? '次の人へ' : '入力完了')}
+            </button>
+        </div>
     </div>
   );
 };
 
-const ExternalForm: React.FC<{ onSubmit: (data: Omit<ExternalVisitorGroup, 'timestamp'>) => void; onBack: () => void; setNotification: (notification: NotificationMessage | null) => void; }> = ({ onSubmit, onBack, setNotification }) => {
+const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: any) => void; extraStep?: { question: string; onSelect: (value: boolean) => void; } }> = ({ title, onBack, onSubmit, extraStep }) => {
+    const { setNotification } = useVisitorContext();
     const [count, setCount] = useState<number | null>(null);
     const [customCount, setCustomCount] = useState('');
     const [shogiStrength, setShogiStrength] = useState(SHOGI_RANKS[0]);
-    const [step, setStep] = useState<'count' | 'custom' | 'strength'>('count');
+    const [extraAnswer, setExtraAnswer] = useState<boolean | null>(null);
+    const [step, setStep] = useState<'count' | 'custom' | 'extra' | 'strength'>('count');
     const [isLoading, setIsLoading] = useState(false);
 
     const handleCountSelect = (num: number) => {
         setCount(num);
+        if (extraStep) { setStep('extra'); } else { setStep('strength'); }
+    };
+    
+    const handleExtraSelect = (val: boolean) => {
+        if (extraStep) extraStep.onSelect(val);
+        setExtraAnswer(val);
         setStep('strength');
     };
 
     const handleCustomSubmit = () => {
         const num = parseInt(customCount, 10);
-        if (num > 0) {
-            handleCountSelect(num);
-        } else { 
-            setNotification({ message: '人数を正しく入力してください。', type: 'error' });
+        if (num > 0) handleCountSelect(num);
+        else setNotification({ message: '人数を正しく入力してください。', type: 'error' });
+    };
+    
+    const getBackFunction = () => {
+        switch (step) {
+            case 'strength': return () => setStep(extraStep ? 'extra' : 'count');
+            case 'extra': return () => setStep('count');
+            case 'custom': return () => setStep('count');
+            default: return onBack;
         }
     };
 
     const handleFinalSubmit = () => {
-        if (count && shogiStrength) {
+        if (count && shogiStrength && (extraAnswer !== null || !extraStep)) {
             setIsLoading(true);
             setTimeout(() => {
-                onSubmit({ count, shogiStrength });
+                onSubmit({ count, shogiStrength, extraAnswer });
             }, 500);
         }
     };
@@ -422,19 +708,29 @@ const ExternalForm: React.FC<{ onSubmit: (data: Omit<ExternalVisitorGroup, 'time
     if (step === 'strength' && count !== null) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-                <button onClick={() => setStep('count')} className="absolute top-6 left-6 text-stone-300 hover:text-white text-3xl p-2 rounded-full transition-transform transform active:scale-95" aria-label="人数選択に戻る">&larr; 戻る</button>
-                <h2 className="text-5xl font-bold mb-6 text-amber-100">{count}名様ですね</h2>
-                <p className="text-2xl text-stone-300 mb-16 text-center">グループの中で最も棋力が高い方のものを選択してください。</p>
+                <BackButton onClick={getBackFunction()} />
+                <h2 className="text-6xl font-bold mb-6 text-amber-100">{count}名様ですね</h2>
+                <p className="text-3xl text-stone-200 mb-16 text-center">グループの中で最も棋力が高い方のものを選択してください。</p>
                 <div className="w-full max-w-md space-y-8">
                     <label htmlFor="shogiStrengthExternal" className="sr-only">棋力</label>
-                    <select id="shogiStrengthExternal" value={shogiStrength} onChange={(e) => setShogiStrength(e.target.value)} className="w-full p-6 text-3xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none">{SHOGI_RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select>
-                    <button 
-                        onClick={handleFinalSubmit} 
-                        disabled={isLoading}
-                        className="w-full text-4xl font-semibold py-6 px-4 bg-stone-600 hover:bg-stone-500 rounded-lg transition-transform transform active:scale-95 shadow-lg flex items-center justify-center disabled:bg-stone-800 disabled:cursor-not-allowed"
-                    >
+                    <select id="shogiStrengthExternal" value={shogiStrength} onChange={(e) => setShogiStrength(e.target.value)} className="w-full p-6 text-4xl bg-stone-800 border border-stone-600 rounded-md focus:ring-2 focus:ring-amber-400 focus:outline-none">{SHOGI_RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                    <button onClick={handleFinalSubmit} disabled={isLoading} className="w-full text-5xl font-semibold py-8 px-4 bg-stone-600 hover:bg-stone-500 rounded-lg transition-transform transform active:scale-95 shadow-lg flex items-center justify-center disabled:bg-stone-800 disabled:cursor-not-allowed">
                         {isLoading ? <LoadingSpinner /> : '決定'}
                     </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (step === 'extra' && extraStep) {
+        return (
+             <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
+                <BackButton onClick={getBackFunction()} />
+                <h2 className="text-6xl font-bold mb-6 text-amber-100">{title}</h2>
+                <p className="text-3xl text-stone-200 mb-16 text-center">{extraStep.question}</p>
+                <div className="w-full max-w-lg flex gap-8">
+                    <button onClick={() => handleExtraSelect(true)} className="flex-1 text-5xl font-semibold py-16 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg">はい</button>
+                    <button onClick={() => handleExtraSelect(false)} className="flex-1 text-5xl font-semibold py-16 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg">いいえ</button>
                 </div>
             </div>
         );
@@ -443,12 +739,12 @@ const ExternalForm: React.FC<{ onSubmit: (data: Omit<ExternalVisitorGroup, 'time
     if (step === 'custom') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-                <button onClick={() => setStep('count')} className="absolute top-6 left-6 text-stone-300 hover:text-white text-3xl p-2 rounded-full transition-transform transform active:scale-95" aria-label="人数選択に戻る">&larr; 戻る</button>
-                <h2 className="text-5xl font-bold mb-10 text-amber-100">人数の入力</h2>
-                <div className="w-full max-w-md space-y-8">
-                    <div role="status" className="w-full p-3 bg-stone-800 border border-stone-600 rounded-md text-center text-5xl h-24 flex items-center justify-center mb-4">{customCount || <span className="text-stone-500">人数</span>}</div>
+                <BackButton onClick={getBackFunction()} />
+                <h2 className="text-6xl font-bold mb-10 text-amber-100">人数の入力</h2>
+                <div className="w-full max-w-sm space-y-8">
+                    <div role="status" className="w-full p-3 bg-stone-800 border border-stone-600 rounded-md text-center text-6xl h-28 flex items-center justify-center mb-4">{customCount || <span className="text-stone-500">人数</span>}</div>
                     <NumericKeypad value={customCount} onValueChange={setCustomCount} />
-                    <button onClick={handleCustomSubmit} className="w-full text-4xl font-semibold py-6 px-4 bg-stone-600 hover:bg-stone-500 rounded-lg transition-transform transform active:scale-95 shadow-lg">決定</button>
+                    <button onClick={handleCustomSubmit} className="w-full text-5xl font-semibold py-8 px-4 bg-stone-600 hover:bg-stone-500 rounded-lg transition-transform transform active:scale-95 shadow-lg">決定</button>
                 </div>
             </div>
         );
@@ -456,152 +752,191 @@ const ExternalForm: React.FC<{ onSubmit: (data: Omit<ExternalVisitorGroup, 'time
     
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-            <button onClick={onBack} className="absolute top-6 left-6 text-stone-300 hover:text-white text-3xl p-2 rounded-full transition-transform transform active:scale-95" aria-label="メイン画面に戻る">&larr; 戻る</button>
-            <h2 className="text-5xl font-bold mb-6 text-amber-100">ようこそ！</h2>
-            <p className="text-2xl text-stone-300 mb-16 text-center">全部で何名様でいらっしゃいましたか？</p>
-            <div className="w-full max-w-md grid grid-cols-2 gap-6">
-                {[1, 2, 3, 4, 5].map(num => (<button key={num} onClick={() => handleCountSelect(num)} className="text-5xl font-semibold py-16 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label={`${num}名`}>{num}名</button>))}
-                <button onClick={() => setStep('custom')} className="text-5xl font-semibold py-16 px-4 bg-stone-800 hover:bg-stone-700 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label="その他の人数">その他</button>
+            <BackButton onClick={onBack} label="メイン画面に戻る" />
+            <h2 className="text-6xl font-bold mb-6 text-amber-100">{title}</h2>
+            <p className="text-3xl text-stone-200 mb-16 text-center">全部で何名様でいらっしゃいましたか？</p>
+            <div className="w-full max-w-2xl grid grid-cols-3 gap-6">
+                {[1, 2, 3, 4, 5].map(num => (<button key={num} onClick={() => handleCountSelect(num)} className="text-6xl font-semibold py-20 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label={`${num}名`}>{num}名</button>))}
+                <button onClick={() => setStep('custom')} className="text-6xl font-semibold py-20 px-4 bg-stone-800 hover:bg-stone-700 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label="その他の人数">他</button>
             </div>
         </div>
     );
 };
 
-const CompletionScreen: React.FC<{ onFinish: () => void; visitorType: 'student' | 'external' | null; customMessages: { student: string; external: string }; }> = ({ onFinish, visitorType, customMessages }) => {
-  useEffect(() => {
-    const timer = setTimeout(() => onFinish(), 8000);
-    return () => clearTimeout(timer);
-  }, [onFinish]);
+const ConfettiPiece: React.FC = () => {
+  const colors = ['#facc15', '#fb923c', '#4ade80', '#60a5fa', '#c084fc'];
+  const style = {
+    left: `${Math.random() * 100}vw`,
+    width: `${Math.random() * 8 + 6}px`,
+    height: `${Math.random() * 8 + 6}px`,
+    backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+    transform: `rotate(${Math.random() * 360}deg)`,
+    animationName: 'confetti-fall',
+    animationDuration: `${Math.random() * 4 + 3}s`,
+    animationDelay: `${Math.random() * 5}s`,
+    animationTimingFunction: 'linear',
+    animationFillMode: 'forwards',
+  };
+  return <div className="absolute top-[-20px]" style={style} />;
+};
 
-  const message = visitorType ? customMessages[visitorType] : "将棋部の展示をお楽しみください！";
+const CompletionScreen: React.FC<{ onFinish: () => void; visitorType: VisitorType; }> = ({ onFinish, visitorType }) => {
+  const { customMessages } = useVisitorContext();
+  const [countdown, setCountdown] = useState(10);
+
+  useEffect(() => {
+    if (countdown <= 0) { onFinish(); return; }
+    const timer = setInterval(() => setCountdown(prev => prev - 1), 1000);
+    return () => clearInterval(timer);
+  }, [countdown, onFinish]);
+
+  const message = (visitorType && customMessages[visitorType]) ? customMessages[visitorType] : "将棋部の展示をお楽しみください！";
+  const confettiPieces = React.useMemo(() => Array.from({ length: 150 }).map((_, i) => <ConfettiPiece key={i} />), []);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-6" role="alert">
-      <h2 className="text-7xl font-bold text-amber-100 text-center">受付完了</h2>
-      <p className="w-full max-w-4xl text-3xl mt-10 text-stone-300 leading-relaxed whitespace-pre-line text-left">{message}</p>
-      <p className="text-lg mt-12 text-stone-400 text-center">自動でTOP画面に戻ります。</p>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-6 relative overflow-hidden" role="alert">
+      {confettiPieces}
+      <div className="relative z-10 text-center flex flex-col items-center w-full">
+        <h2 className="text-8xl font-bold text-amber-100 text-center">受付完了</h2>
+        <p className="w-full max-w-4xl text-4xl mt-12 text-stone-200 leading-relaxed whitespace-pre-line text-left">{message}</p>
+        <div className="mt-16 w-full max-w-md">
+          <button onClick={onFinish} className="w-full text-4xl font-semibold py-8 px-4 bg-stone-700 hover:bg-stone-600 rounded-xl transition-transform transform active:scale-95 shadow-lg mb-4">TOPに戻る</button>
+          <p className="text-2xl text-stone-400 text-center" aria-live="polite">あと {countdown} 秒で自動でTOP画面に戻ります。</p>
+        </div>
+      </div>
     </div>
   );
 };
 
-const ResetConfirmationView: React.FC<{ onConfirm: (password: string) => void; onBack: () => void }> = ({ onConfirm, onBack }) => {
+const ResetConfirmationView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [password, setPassword] = useState('');
-  
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      onConfirm(password);
-    };
+    const { handleConfirmReset } = useVisitorContext();
+    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); handleConfirmReset(password); };
   
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-gray-800 p-4 text-center">
           <div className="bg-white border-2 border-red-300 rounded-2xl p-8 shadow-2xl max-w-lg w-full">
-              <h2 className="text-4xl font-bold mb-4 text-red-900">最終確認</h2>
-              <p className="text-xl mb-8 text-red-700">この操作は部長に許可された場合にのみ有効です。</p>
+              <h2 className="text-5xl font-bold mb-4 text-red-900">最終確認</h2>
+              <p className="text-2xl mb-8 text-red-700">この操作は部長に許可された場合にのみ有効です。</p>
               <form onSubmit={handleSubmit} className="w-full space-y-6">
                   <label htmlFor="reset-password" className="sr-only">専用パスワード</label>
-                  <input
-                      id="reset-password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full p-3 bg-white border border-red-300 rounded-md text-center text-xl text-gray-900 focus:ring-2 focus:ring-red-500 focus:outline-none"
-                      placeholder="専用パスワード"
-                      autoFocus
-                      aria-required="true"
-                  />
-                  <button type="submit" className="w-full text-2xl font-semibold py-5 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">
-                      実行
-                  </button>
+                  <input id="reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 bg-white border border-red-300 rounded-md text-center text-2xl text-gray-900 focus:ring-2 focus:ring-red-500 focus:outline-none" placeholder="専用パスワード" autoFocus aria-required="true"/>
+                  <button type="submit" className="w-full text-3xl font-semibold py-5 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-transform transform active:scale-95 shadow-lg">実行</button>
               </form>
           </div>
-          <button onClick={onBack} className="mt-12 text-3xl font-semibold py-5 px-10 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl transition-transform transform active:scale-95 shadow-lg" aria-label="管理者画面に戻る">
-              &larr; 管理者画面に戻る
-          </button>
+          <button onClick={onBack} className="mt-12 text-4xl font-semibold py-5 px-10 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl transition-transform transform active:scale-95 shadow-lg">&larr; 管理者画面に戻る</button>
       </div>
     );
 };
 
+const AppContent: React.FC = () => {
+    const [view, setView] = useState<View>('main');
+    const [lastVisitorType, setLastVisitorType] = useState<VisitorType>(null);
+    const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+    const { handleTeacherSubmit } = useVisitorContext();
+
+    const handleSelect = useCallback((selection: 'student' | 'external' | 'parent' | 'ob' | 'teacher') => {
+        if (selection === 'teacher') { handleTeacherSubmit(); } 
+        else { setView(selection); }
+    }, [handleTeacherSubmit]);
+
+    const handleReturnToMain = useCallback(() => setView('main'), []);
+    const handleNavigateToReset = useCallback(() => setView('resetConfirmation'), []);
+    const handleAdminAccess = useCallback(() => setView('adminLogin'), []);
+
+    const renderView = () => {
+        switch (view) {
+            case 'student': return <StudentForm onBack={handleReturnToMain} />;
+            case 'external': return <GroupForm title="ようこそ！" onSubmit={useVisitorContext().handleExternalSubmit} onBack={handleReturnToMain} />;
+            case 'parent': return <GroupForm title="保護者の方" onSubmit={useVisitorContext().handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
+            case 'ob': return <GroupForm title="OBの方" onSubmit={useVisitorContext().handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
+            case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
+            case 'adminLogin': return <AdminLogin onBack={handleReturnToMain} />;
+            case 'resetConfirmation': return <ResetConfirmationView onBack={() => setView('admin')} />;
+            case 'admin': return isAdminAuthenticated ? <AdminView onBack={handleReturnToMain} onNavigateToReset={handleNavigateToReset} /> : <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
+            default: return <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
+        }
+    };
+    
+    return (
+        <>
+          <Notification />
+          <div key={view} className="view-container">
+            {renderView()}
+          </div>
+        </>
+    );
+}
+
 const App: React.FC = () => {
-  const [view, setView] = useState<View>('main');
-  const [lastVisitorType, setLastVisitorType] = useState<'student' | 'external' | null>(null);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [notification, setNotification] = useState<NotificationMessage | null>(null);
-
-  const [externalVisitors, setExternalVisitors] = useLocalStorage<ExternalVisitorGroup[]>('shogi_externalVisitors', []);
-  const [studentVisitors, setStudentVisitors] = useLocalStorage<Student[]>('shogi_studentVisitors', []);
-  
-  const defaultMessages = {
-    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレットを取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員との対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
-    student: "希望する場合はパンフレットを受け取ってください。\n※簡単な戦法研究や詰将棋が掲載されているので、周りの人より強くなりたいという人はぜひ読んでみて下さい！\n混雑時は外部の方優先で対応させていただきます。\n移動などをお願いする場合がありますが、将棋部員の指示に従ってください。\nご理解・ご協力をお願いします。\n現在、将棋部では体験入部・入部を受け付けています。\n興味があれば、人数は問いませんので気軽に来て下さい！",
-  };
-  const [customMessages, setCustomMessages] = useLocalStorage<{ student: string; external: string }>('shogi_customMessages', defaultMessages);
-
-
-  useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => setNotification(null), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [notification]);
-
-  const handleSelect = useCallback((selection: 'student' | 'external') => setView(selection), []);
-  const handleReturnToMain = useCallback(() => setView('main'), []);
-
-  const handleStudentSubmit = useCallback((student: Omit<Student, 'timestamp'>) => {
-    setStudentVisitors(prev => [...prev, { ...student, timestamp: new Date().toISOString() }]);
-    setLastVisitorType('student');
-    setView('thanks');
-  }, [setStudentVisitors]);
-
-  const handleExternalSubmit = useCallback((data: Omit<ExternalVisitorGroup, 'timestamp'>) => {
-    setExternalVisitors(prev => [...prev, { ...data, timestamp: new Date().toISOString() }]);
-    setLastVisitorType('external');
-    setView('thanks');
-  }, [setExternalVisitors]);
-  
-  const handleConfirmReset = useCallback((password: string) => {
-    if (password === '306') {
-        setExternalVisitors([]);
-        setStudentVisitors([]);
-        setNotification({ message: 'すべてのデータがリセットされました。', type: 'success' });
-        setView('admin');
-    } else {
-        setNotification({ message: 'パスワードが違います。', type: 'error' });
-    }
-  }, [setExternalVisitors, setStudentVisitors]);
-  
-  const handleNavigateToReset = useCallback(() => setView('resetConfirmation'), []);
-
-  const handleAdminAccess = useCallback(() => setView('adminLogin'), []);
-  const handleAdminLogin = useCallback((password: string) => {
-    if (password === ADMIN_PASSWORD) {
-        setIsAdminAuthenticated(true);
-        setView('admin');
-    } else { 
-        setNotification({ message: 'パスワードが違います。', type: 'error' });
-    }
-  }, []);
-
-  const renderView = () => {
-    switch (view) {
-      case 'student': return <StudentForm onSubmit={handleStudentSubmit} onBack={handleReturnToMain} setNotification={setNotification} />;
-      case 'external': return <ExternalForm onSubmit={handleExternalSubmit} onBack={handleReturnToMain} setNotification={setNotification} />;
-      case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} customMessages={customMessages} />;
-      case 'adminLogin': return <AdminLogin onLogin={handleAdminLogin} onBack={handleReturnToMain} />;
-      case 'resetConfirmation': return <ResetConfirmationView onConfirm={handleConfirmReset} onBack={() => setView('admin')} />;
-      case 'admin': return isAdminAuthenticated ? <AdminView studentVisitors={studentVisitors} externalVisitors={externalVisitors} onBack={handleReturnToMain} onNavigateToReset={handleNavigateToReset} setNotification={setNotification} customMessages={customMessages} setCustomMessages={setCustomMessages} /> : <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
-      default: return <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
-    }
-  };
+  const [viewState, setViewState] = useState<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean}>({
+    view: 'main',
+    lastVisitorType: null,
+    isAdminAuthenticated: false,
+  });
 
   return (
-    <>
-      <Notification notification={notification} />
-      <div key={view} className="view-container">
-        {renderView()}
-      </div>
-    </>
+    <VisitorProvider
+      // FIX: Handle updater function form for state setters.
+      // The props `setView`, `setLastVisitorType`, and `setIsAdminAuthenticated` are of type `React.Dispatch<React.SetStateAction<...>>`.
+      // This means they can receive a value OR a function to update the state. The original implementation didn't handle the function case,
+      // leading to a type error. The fix checks if the received action is a function and executes it with the previous state value if so.
+      setView={useCallback((view: React.SetStateAction<View>) => {
+        setViewState(s => ({ ...s, view: typeof view === 'function' ? view(s.view) : view }));
+      }, [])}
+      setLastVisitorType={useCallback((lastVisitorType: React.SetStateAction<VisitorType>) => {
+        setViewState(s => ({ ...s, lastVisitorType: typeof lastVisitorType === 'function' ? lastVisitorType(s.lastVisitorType) : lastVisitorType }));
+      }, [])}
+      setIsAdminAuthenticated={useCallback((isAdminAuthenticated: React.SetStateAction<boolean>) => {
+        setViewState(s => ({ ...s, isAdminAuthenticated: typeof isAdminAuthenticated === 'function' ? isAdminAuthenticated(s.isAdminAuthenticated) : isAdminAuthenticated }));
+      }, [])}
+    >
+        <AppContentWrapper viewState={viewState} setViewState={setViewState} />
+    </VisitorProvider>
   );
+};
+
+const AppContentWrapper: React.FC<{
+  viewState: {view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean};
+  setViewState: React.Dispatch<React.SetStateAction<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean}>>;
+}> = ({ viewState, setViewState }) => {
+    const { view, lastVisitorType, isAdminAuthenticated } = viewState;
+    const { handleTeacherSubmit, handleExternalSubmit, handleParentSubmit, handleAlumniSubmit } = useVisitorContext();
+
+    const handleSelect = useCallback((selection: 'student' | 'external' | 'parent' | 'ob' | 'teacher') => {
+        if (selection === 'teacher') {
+            handleTeacherSubmit();
+        } else {
+            setViewState(s => ({ ...s, view: selection }));
+        }
+    }, [handleTeacherSubmit, setViewState]);
+
+    const handleReturnToMain = useCallback(() => setViewState(s => ({...s, view: 'main'})), [setViewState]);
+    const handleNavigateToReset = useCallback(() => setViewState(s => ({...s, view: 'resetConfirmation'})), [setViewState]);
+    const handleAdminAccess = useCallback(() => setViewState(s => ({...s, view: 'adminLogin'})), [setViewState]);
+
+    const renderView = () => {
+        switch (view) {
+            case 'student': return <StudentForm onBack={handleReturnToMain} />;
+            case 'external': return <GroupForm title="ようこそ！" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} />;
+            case 'parent': return <GroupForm title="保護者の方" onSubmit={handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
+            case 'ob': return <GroupForm title="OBの方" onSubmit={handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
+            case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
+            case 'adminLogin': return <AdminLogin onBack={handleReturnToMain} />;
+            case 'resetConfirmation': return <ResetConfirmationView onBack={() => setViewState(s => ({...s, view: 'admin'}))} />;
+            case 'admin': return isAdminAuthenticated ? <AdminView onBack={handleReturnToMain} onNavigateToReset={handleNavigateToReset} /> : <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
+            default: return <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
+        }
+    };
+    
+    return (
+      <>
+        <Notification />
+        <div key={view} className="view-container">
+          {renderView()}
+        </div>
+      </>
+    );
 };
 
 export default App;
