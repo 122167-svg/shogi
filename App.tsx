@@ -45,7 +45,7 @@ const DAN_RANKS = ['初段', '二段', '三段', '四段以上'];
 
 const ADMIN_PASSWORD = 'shogi';
 const defaultMessages = {
-    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレットを取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員との対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
+    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレットを取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
     student: "希望する場合はパンフレットを受け取ってください。\n※簡単な戦法研究や詰将棋が掲載されているので、周りの人より強くなりたいという人はぜひ読んでみて下さい！\n混雑時は外部の方優先で対応させていただきます。\n移動などをお願いする場合がありますが、将棋部員の指示に従ってください。\nご理解・ご協力をお願いします。\n現在、将棋部では体験入部・入部を受け付けています。\n興味があれば、人数は問いませんので気軽に来て下さい！",
     parent: "将棋サロンへようこそ！将棋部の雰囲気をお楽しみください。何かご不明な点がございましたら、お近くの部員までお声がけください。",
     ob: "希望される場合は、パンフレット（赤:有段者用　青：級位者用）を取ってください。\nお時間がありましたら、ぜひ現役部員との対局もお楽しみください。",
@@ -238,23 +238,31 @@ const Notification: React.FC = () => {
   );
 };
 
-const NumericKeypad: React.FC<{ value: string; onValueChange: (value: string) => void }> = ({ value, onValueChange }) => {
+const NumericKeypad: React.FC<{ value: string; onValueChange: (value: string) => void; lightTheme?: boolean }> = ({ value, onValueChange, lightTheme = false }) => {
   const handleKeyPress = (key: string) => {
     if (value.length >= 2) return;
     onValueChange(value + key);
   };
   const handleBackspace = () => onValueChange(value.slice(0, -1));
   const handleClear = () => onValueChange('');
-  const buttonClass = "w-full h-28 bg-stone-800 border border-stone-600 hover:bg-stone-700 rounded-lg text-6xl font-bold flex items-center justify-center transition-all duration-300 transform active:scale-95 text-white";
+  const buttonClass = lightTheme
+    ? "w-full h-28 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg text-6xl font-bold flex items-center justify-center transition-all duration-300 transform active:scale-95 text-gray-800"
+    : "w-full h-28 bg-stone-800 border border-stone-600 hover:bg-stone-700 rounded-lg text-6xl font-bold flex items-center justify-center transition-all duration-300 transform active:scale-95 text-white";
+  const clearButtonClass = lightTheme
+    ? "bg-red-500 hover:bg-red-600 border-red-300 text-white"
+    : "bg-red-800 hover:bg-red-700 border-red-600 text-white";
+  const backspaceButtonClass = lightTheme
+    ? "bg-gray-200 hover:bg-gray-300 border-gray-300"
+    : "bg-stone-700 hover:bg-stone-600 border-stone-500 text-white";
 
   return (
     <div className="w-full max-w-sm mx-auto grid grid-cols-3 gap-4">
       {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => (
         <button key={key} type="button" onClick={() => handleKeyPress(key)} className={buttonClass} aria-label={`数字 ${key}`}>{key}</button>
       ))}
-      <button type="button" onClick={handleClear} className={`${buttonClass} bg-red-800 hover:bg-red-700 border-red-600`} aria-label="クリア">C</button>
+      <button type="button" onClick={handleClear} className={`${buttonClass} ${clearButtonClass}`} aria-label="クリア">C</button>
       <button type="button" onClick={() => handleKeyPress('0')} className={buttonClass} aria-label="数字 0">0</button>
-      <button type="button" onClick={handleBackspace} className={`${buttonClass} bg-stone-700 hover:bg-stone-600 border-stone-500`} aria-label="一文字削除">⌫</button>
+      <button type="button" onClick={handleBackspace} className={`${buttonClass} ${backspaceButtonClass}`} aria-label="一文字削除">⌫</button>
     </div>
   );
 };
@@ -269,9 +277,9 @@ const AdminLogin: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     };
   
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-stone-950 text-white p-4">
-        <button onClick={onBack} className="absolute top-4 left-4 text-white hover:text-stone-200 text-2xl p-3 rounded-full transition-all transform active:scale-95" aria-label="メイン画面に戻る">&larr; 戻る</button>
-        <h2 id="admin-login-title" className="text-4xl font-bold mb-8 text-white">管理者ログイン</h2>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-gray-800 p-4">
+        <button onClick={onBack} className="absolute top-4 left-4 text-gray-600 hover:text-gray-900 text-2xl p-3 rounded-full transition-all transform active:scale-95" aria-label="メイン画面に戻る">&larr; 戻る</button>
+        <h2 id="admin-login-title" className="text-4xl font-bold mb-8 text-gray-900">管理者ログイン</h2>
         <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6" aria-labelledby="admin-login-title">
           <label htmlFor="admin-password" className="sr-only">パスワード</label>
           <input
@@ -279,11 +287,12 @@ const AdminLogin: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-4 bg-stone-800 border border-stone-600 rounded-md text-center text-white text-2xl focus:ring-2 focus:ring-amber-400 focus:outline-none"
+            className="w-full p-4 bg-white border border-gray-300 rounded-md text-center text-gray-900 text-2xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
             placeholder="パスワード"
             aria-required="true"
+            autoFocus
           />
-          <button type="submit" className="w-full text-3xl font-semibold py-5 px-4 bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">
+          <button type="submit" className="w-full text-3xl font-semibold py-5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">
             ログイン
           </button>
         </form>
@@ -384,21 +393,21 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
         teachers: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2 text-right">操作</th></>,
     };
     const rowRenderers: Record<string, (item: any) => JSX.Element> = {
-        students: (s) => <tr key={s.timestamp} className="border-t border-stone-700 hover:bg-stone-800/50"><td className="p-2 text-sm text-stone-200">{new Date(s.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{s.grade}</td><td className="p-2">{s.class}</td><td className="p-2">{s.studentId}</td><td className="p-2">{s.shogiStrength}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('students', s.timestamp)} className="text-red-500 hover:text-red-400 font-semibold px-3 py-1 rounded-md hover:bg-red-500/20 transition-colors" aria-label={`${new Date(s.timestamp).toLocaleString('ja-JP')}の在校生データを削除`}>削除</button></td></tr>,
-        externals: (g) => <tr key={g.timestamp} className="border-t border-stone-700 hover:bg-stone-800/50"><td className="p-2 text-sm text-stone-200">{new Date(g.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{g.count}名</td><td className="p-2">{g.shogiStrength}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('externals', g.timestamp)} className="text-red-500 hover:text-red-400 font-semibold px-3 py-1 rounded-md hover:bg-red-500/20 transition-colors" aria-label={`${new Date(g.timestamp).toLocaleString('ja-JP')}の外部来場者データを削除`}>削除</button></td></tr>,
-        parents: (p) => <tr key={p.timestamp} className="border-t border-stone-700 hover:bg-stone-800/50"><td className="p-2 text-sm text-stone-200">{new Date(p.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{p.count}名</td><td className="p-2">{p.shogiStrength}</td><td className="p-2">{p.sonInClub ? 'はい' : 'いいえ'}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('parents', p.timestamp)} className="text-red-500 hover:text-red-400 font-semibold px-3 py-1 rounded-md hover:bg-red-500/20 transition-colors" aria-label={`${new Date(p.timestamp).toLocaleString('ja-JP')}の保護者データを削除`}>削除</button></td></tr>,
-        alumni: (a) => <tr key={a.timestamp} className="border-t border-stone-700 hover:bg-stone-800/50"><td className="p-2 text-sm text-stone-200">{new Date(a.timestamp).toLocaleString('ja-JP')}</td><td className="p-2">{a.count}名</td><td className="p-2">{a.shogiStrength}</td><td className="p-2">{a.wasInClub ? 'はい' : 'いいえ'}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('alumni', a.timestamp)} className="text-red-500 hover:text-red-400 font-semibold px-3 py-1 rounded-md hover:bg-red-500/20 transition-colors" aria-label={`${new Date(a.timestamp).toLocaleString('ja-JP')}のOBデータを削除`}>削除</button></td></tr>,
-        teachers: (t) => <tr key={t.timestamp} className="border-t border-stone-700 hover:bg-stone-800/50"><td className="p-2 text-sm text-stone-200">{new Date(t.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('teachers', t.timestamp)} className="text-red-500 hover:text-red-400 font-semibold px-3 py-1 rounded-md hover:bg-red-500/20 transition-colors" aria-label={`${new Date(t.timestamp).toLocaleString('ja-JP')}の教職員データを削除`}>削除</button></td></tr>,
+        students: (s) => <tr key={s.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(s.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{s.grade}</td><td className="p-2 text-gray-800">{s.class}</td><td className="p-2 text-gray-800">{s.studentId}</td><td className="p-2 text-gray-800">{s.shogiStrength}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('students', s.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(s.timestamp).toLocaleString('ja-JP')}の在校生データを削除`}>削除</button></td></tr>,
+        externals: (g) => <tr key={g.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(g.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{g.count}名</td><td className="p-2 text-gray-800">{g.shogiStrength}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('externals', g.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(g.timestamp).toLocaleString('ja-JP')}の外部来場者データを削除`}>削除</button></td></tr>,
+        parents: (p) => <tr key={p.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(p.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{p.count}名</td><td className="p-2 text-gray-800">{p.shogiStrength}</td><td className="p-2 text-gray-800">{p.sonInClub ? 'はい' : 'いいえ'}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('parents', p.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(p.timestamp).toLocaleString('ja-JP')}の保護者データを削除`}>削除</button></td></tr>,
+        alumni: (a) => <tr key={a.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(a.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{a.count}名</td><td className="p-2 text-gray-800">{a.shogiStrength}</td><td className="p-2 text-gray-800">{a.wasInClub ? 'はい' : 'いいえ'}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('alumni', a.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(a.timestamp).toLocaleString('ja-JP')}のOBデータを削除`}>削除</button></td></tr>,
+        teachers: (t) => <tr key={t.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(t.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('teachers', t.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(t.timestamp).toLocaleString('ja-JP')}の教職員データを削除`}>削除</button></td></tr>,
     };
 
     return (
-      <div className="min-h-screen bg-stone-950 text-white p-4">
-        <button onClick={() => setAdminSubView('menu')} className="fixed top-4 left-4 text-white hover:text-stone-200 z-10 bg-stone-800 border border-stone-600 rounded-full px-5 py-3 text-xl hover:bg-stone-700 transition-all transform active:scale-95" aria-label="管理者メニューに戻る">&larr; 管理者メニューに戻る</button>
+      <div className="min-h-screen bg-gray-50 text-gray-800 p-4">
+        <button onClick={() => setAdminSubView('menu')} className="fixed top-4 left-4 text-gray-700 hover:text-gray-900 z-10 bg-white border border-gray-300 rounded-full px-5 py-3 text-xl hover:bg-gray-100 transition-all transform active:scale-95" aria-label="管理者メニューに戻る">&larr; 管理者メニューに戻る</button>
         <div className="max-w-6xl mx-auto pt-20">
-          <div className="bg-stone-900 border border-stone-700 p-6 rounded-lg shadow-lg">
-            <h3 className="text-3xl font-semibold text-white mb-4 border-b border-stone-700 pb-2">{listTitle}</h3>
+          <div className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg">
+            <h3 className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">{listTitle}</h3>
             <div className="max-h-[75vh] overflow-y-auto">
-              {currentData.length === 0 ? <p className="text-center text-stone-200 py-4 text-xl">来場者はいません。</p> : <table className="w-full text-left text-xl"><thead className="sticky top-0 bg-stone-800"><tr>{headers[adminSubView]}</tr></thead><tbody>{currentData.slice().reverse().map(rowRenderers[adminSubView])}</tbody></table>}
+              {currentData.length === 0 ? <p className="text-center text-gray-500 py-4 text-xl">来場者はいません。</p> : <table className="w-full text-left text-xl"><thead className="sticky top-0 bg-gray-100 border-b-2 border-gray-200"><tr className="text-gray-600">{headers[adminSubView]}</tr></thead><tbody>{currentData.slice().reverse().map(rowRenderers[adminSubView])}</tbody></table>}
             </div>
           </div>
         </div>
@@ -407,55 +416,55 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
   }
 
   return (
-    <div className="min-h-screen bg-stone-950 text-white p-4">
-      <button onClick={onBack} className="fixed top-4 left-4 text-white hover:text-stone-200 z-10 bg-stone-800 border border-stone-600 rounded-full px-5 py-3 text-xl hover:bg-stone-700 transition-all transform active:scale-95">&larr; 戻る</button>
+    <div className="min-h-screen bg-gray-50 text-gray-800 p-4">
+      <button onClick={onBack} className="fixed top-4 left-4 text-gray-700 hover:text-gray-900 z-10 bg-white border border-gray-300 rounded-full px-5 py-3 text-xl hover:bg-gray-100 transition-all transform active:scale-95">&larr; 戻る</button>
       <div className="max-w-4xl mx-auto pt-16 pb-8">
-        <h2 className="text-5xl font-bold mb-8 text-white text-center">管理者画面</h2>
-        <section className="bg-stone-900 border border-stone-700 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="summary-title">
-          <h3 id="summary-title" className="text-3xl font-semibold text-white mb-4 border-b border-stone-700 pb-2">来場者サマリー</h3>
+        <h2 className="text-5xl font-bold mb-8 text-gray-900 text-center">管理者画面</h2>
+        <section className="bg-white border border-gray-200 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="summary-title">
+          <h3 id="summary-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">来場者サマリー</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-            <div><p className="text-2xl text-stone-200">合計</p><p className="text-5xl font-bold text-white">{totalVisitors}</p></div>
-            <div><p className="text-2xl text-stone-200">在校生</p><p className="text-5xl font-bold text-white">{studentVisitors.length}</p></div>
-            <div><p className="text-2xl text-stone-200">外部・他</p><p className="text-5xl font-bold text-white">{externalCount + parentCount + alumniCount}</p></div>
-            <div><p className="text-2xl text-stone-200">教職員</p><p className="text-5xl font-bold text-white">{teacherCount}</p></div>
+            <div><p className="text-2xl text-gray-500">合計</p><p className="text-5xl font-bold text-gray-900">{totalVisitors}</p></div>
+            <div><p className="text-2xl text-gray-500">在校生</p><p className="text-5xl font-bold text-gray-900">{studentVisitors.length}</p></div>
+            <div><p className="text-2xl text-gray-500">外部・他</p><p className="text-5xl font-bold text-gray-900">{externalCount + parentCount + alumniCount}</p></div>
+            <div><p className="text-2xl text-gray-500">教職員</p><p className="text-5xl font-bold text-gray-900">{teacherCount}</p></div>
           </div>
         </section>
-        <section className="bg-stone-900 border border-stone-700 p-6 rounded-lg shadow-lg mb-8" aria-labelledby="data-view-title">
-          <h3 id="data-view-title" className="text-3xl font-semibold text-white mb-4 border-b border-stone-700 pb-2">データ閲覧</h3>
-          <p className="text-xl text-stone-200 mb-6">表示したい項目を選択してください。</p>
+        <section className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg mb-8" aria-labelledby="data-view-title">
+          <h3 id="data-view-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">データ閲覧</h3>
+          <p className="text-xl text-gray-600 mb-6">表示したい項目を選択してください。</p>
           <div className="w-full grid grid-cols-2 md:grid-cols-3 gap-4">
-            <button onClick={() => setAdminSubView('students')} className="text-3xl font-semibold py-8 px-4 bg-blue-700 hover:bg-blue-600 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">在校生</button>
-            <button onClick={() => setAdminSubView('parents')} className="text-3xl font-semibold py-8 px-4 bg-green-700 hover:bg-green-600 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">保護者</button>
-            <button onClick={() => setAdminSubView('alumni')} className="text-3xl font-semibold py-8 px-4 bg-purple-700 hover:bg-purple-600 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">OB</button>
-            <button onClick={() => setAdminSubView('externals')} className="text-3xl font-semibold py-8 px-4 bg-gray-600 hover:bg-gray-500 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">外部</button>
-            <button onClick={() => setAdminSubView('teachers')} className="text-3xl font-semibold py-8 px-4 bg-orange-700 hover:bg-orange-600 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">教職員</button>
+            <button onClick={() => setAdminSubView('students')} className="text-3xl font-semibold py-8 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">在校生</button>
+            <button onClick={() => setAdminSubView('parents')} className="text-3xl font-semibold py-8 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">保護者</button>
+            <button onClick={() => setAdminSubView('alumni')} className="text-3xl font-semibold py-8 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">OB</button>
+            <button onClick={() => setAdminSubView('externals')} className="text-3xl font-semibold py-8 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">外部</button>
+            <button onClick={() => setAdminSubView('teachers')} className="text-3xl font-semibold py-8 px-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">教職員</button>
           </div>
         </section>
-        <section className="bg-stone-900 border border-stone-700 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="data-manage-title">
-            <h3 id="data-manage-title" className="text-3xl font-semibold text-white mb-4 border-b border-stone-700 pb-2">データ管理</h3>
-            <p className="text-xl text-stone-200 mb-4">全データを複数のCSVファイルにまとめ、ZIP形式で一括ダウンロードします。</p>
-            <button onClick={handleBatchCsvBackup} className="w-full text-2xl font-semibold py-5 px-4 bg-teal-600 hover:bg-teal-500 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">
+        <section className="bg-white border border-gray-200 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="data-manage-title">
+            <h3 id="data-manage-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">データ管理</h3>
+            <p className="text-xl text-gray-600 mb-4">全データを複数のCSVファイルにまとめ、ZIP形式で一括ダウンロードします。</p>
+            <button onClick={handleBatchCsvBackup} className="w-full text-2xl font-semibold py-5 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">
                 全データをCSVで一括バックアップ
             </button>
         </section>
-        <section className="bg-stone-900 border border-stone-700 p-6 rounded-lg shadow-lg mb-8" aria-labelledby="message-edit-title">
-            <h3 id="message-edit-title" className="text-3xl font-semibold text-white mb-4 border-b border-stone-700 pb-2">完了メッセージの編集</h3>
+        <section className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg mb-8" aria-labelledby="message-edit-title">
+            <h3 id="message-edit-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">完了メッセージの編集</h3>
             <div className="space-y-6">
                 {Object.keys(editedMessages).map(key => (
                     <div key={key}>
-                        <label htmlFor={`${key}Message`} className="block text-xl font-medium text-white mb-2 capitalize">{key}</label>
-                        <textarea id={`${key}Message`} rows={5} className="w-full p-3 bg-stone-800 border border-stone-600 rounded-md text-stone-100 text-lg focus:ring-2 focus:ring-amber-400 focus:outline-none" value={editedMessages[key]} onChange={(e) => setEditedMessages(prev => ({ ...prev, [key]: e.target.value }))} />
+                        <label htmlFor={`${key}Message`} className="block text-xl font-medium text-gray-700 mb-2 capitalize">{key}</label>
+                        <textarea id={`${key}Message`} rows={5} className="w-full p-3 bg-gray-100 border border-gray-300 rounded-md text-gray-900 text-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value={editedMessages[key]} onChange={(e) => setEditedMessages(prev => ({ ...prev, [key]: e.target.value }))} />
                     </div>
                 ))}
-                <button onClick={handleSaveMessages} className="w-full text-2xl font-semibold py-4 px-4 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">
+                <button onClick={handleSaveMessages} className="w-full text-2xl font-semibold py-4 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">
                     メッセージを保存
                 </button>
             </div>
         </section>
-        <section className="bg-red-900/50 border border-red-700 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="danger-zone-title">
-          <h3 id="danger-zone-title" className="text-3xl font-semibold text-red-300 mb-4 border-b border-red-500/30 pb-2">危険ゾーン</h3>
-          <p className="text-xl text-red-400 mb-4">この操作は元に戻せません。すべての来場者データが削除されます。</p>
-          <button onClick={onNavigateToReset} className="w-full md:w-auto text-2xl font-semibold py-4 px-8 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">全データをリセット</button>
+        <section className="bg-red-50 border border-red-200 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="danger-zone-title">
+          <h3 id="danger-zone-title" className="text-3xl font-semibold text-red-800 mb-4 border-b border-red-200 pb-2">危険ゾーン</h3>
+          <p className="text-xl text-red-600 mb-4">この操作は元に戻せません。すべての来場者データが削除されます。</p>
+          <button onClick={onNavigateToReset} className="w-full md:w-auto text-2xl font-semibold py-4 px-8 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">全データをリセット</button>
         </section>
       </div>
     </div>
@@ -614,10 +623,11 @@ const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
                         <div className="w-full max-w-2xl grid grid-cols-1 md:grid-cols-3 gap-6">
                             {SHOGI_STRENGTH_CATEGORIES.map(cat => (
                                 <button key={cat} onClick={() => {
-                                    setStrengthCategory(cat);
                                     if (cat === '特にない') {
                                         setShogiStrength('特にない');
+                                        setStep('confirm');
                                     } else {
+                                        setStrengthCategory(cat);
                                         setShogiStrength('');
                                     }
                                 }} className="text-4xl font-semibold py-16 px-4 bg-stone-800 border border-stone-600 hover:bg-stone-700 rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">
@@ -750,11 +760,12 @@ const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: 
         }
     };
 
-    const handleFinalSubmit = () => {
-        if (count && shogiStrength && (extraAnswer !== null || !extraStep)) {
+    const handleFinalSubmit = (strengthOverride?: string) => {
+        const finalStrength = strengthOverride || shogiStrength;
+        if (count && finalStrength && (extraAnswer !== null || !extraStep)) {
             setIsLoading(true);
             setTimeout(() => {
-                onSubmit({ count, shogiStrength, extraAnswer });
+                onSubmit({ count, shogiStrength: finalStrength, extraAnswer });
             }, 500);
         }
     };
@@ -773,10 +784,10 @@ const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: 
                         <div className="w-full max-w-2xl grid grid-cols-1 md:grid-cols-3 gap-6">
                             {SHOGI_STRENGTH_CATEGORIES.map(cat => (
                                 <button key={cat} onClick={() => {
-                                    setStrengthCategory(cat);
                                     if (cat === '特にない') {
-                                        setShogiStrength('特にない');
+                                        handleFinalSubmit('特にない');
                                     } else {
+                                        setStrengthCategory(cat);
                                         setShogiStrength('');
                                     }
                                 }} className="text-4xl font-semibold py-16 px-4 bg-stone-800 border border-stone-600 hover:bg-stone-700 rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">
@@ -799,7 +810,7 @@ const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: 
                 )}
 
                 <div className="w-full max-w-md mt-12">
-                     <button onClick={handleFinalSubmit} disabled={isLoading || !shogiStrength} className="w-full text-5xl font-semibold py-8 px-4 bg-stone-700 border border-stone-500 hover:bg-stone-600 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg flex items-center justify-center disabled:bg-stone-800 disabled:cursor-not-allowed">
+                     <button onClick={() => handleFinalSubmit()} disabled={isLoading || !shogiStrength} className="w-full text-5xl font-semibold py-8 px-4 bg-stone-700 border border-stone-500 hover:bg-stone-600 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg flex items-center justify-center disabled:bg-stone-800 disabled:cursor-not-allowed">
                         {isLoading ? <LoadingSpinner /> : '決定'}
                     </button>
                 </div>
@@ -849,18 +860,40 @@ const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: 
 };
 
 const ConfettiPiece: React.FC = () => {
-  const colors = ['#facc15', '#fb923c', '#4ade80', '#60a5fa', '#c084fc'];
+  const colors = ['#facc15', '#fb923c', '#4ade80', '#60a5fa', '#c084fc', '#f87171', '#34d399', '#f472b6'];
+  const animations = ['confetti-fall', 'confetti-sway', 'confetti-sway-reverse', 'confetti-zig-zag', 'confetti-spin-fast'];
+  const animationName = animations[Math.floor(Math.random() * animations.length)];
+  
+  const shapeType = Math.random();
+  let shapeStyle = {};
+  if (shapeType < 0.4) { // 40% chance for square
+    shapeStyle = {
+      width: `${Math.random() * 8 + 6}px`,
+      height: `${Math.random() * 8 + 6}px`,
+    };
+  } else if (shapeType < 0.8) { // 40% chance for circle
+    shapeStyle = {
+      width: `${Math.random() * 10 + 8}px`,
+      height: `${Math.random() * 10 + 8}px`,
+      borderRadius: '50%',
+    };
+  } else { // 20% chance for strip
+    shapeStyle = {
+      width: `${Math.random() * 4 + 3}px`,
+      height: `${Math.random() * 10 + 10}px`,
+    };
+  }
+
   const style = {
     left: `${Math.random() * 100}vw`,
-    width: `${Math.random() * 8 + 6}px`,
-    height: `${Math.random() * 8 + 6}px`,
     backgroundColor: colors[Math.floor(Math.random() * colors.length)],
     transform: `rotate(${Math.random() * 360}deg)`,
-    animationName: 'confetti-fall',
-    animationDuration: `${Math.random() * 4 + 3}s`,
-    animationDelay: `${Math.random() * 5}s`,
+    animationName: animationName,
+    animationDuration: `${Math.random() * 4 + 5}s`,
+    animationDelay: `${Math.random() * 7}s`,
     animationTimingFunction: 'linear',
     animationFillMode: 'forwards',
+    ...shapeStyle
   };
   return <div className="absolute top-[-20px]" style={style} />;
 };
@@ -899,17 +932,17 @@ const ResetConfirmationView: React.FC<{ onBack: () => void }> = ({ onBack }) => 
     const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); handleConfirmReset(password); };
   
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-stone-950 text-white p-4 text-center">
-          <div className="bg-stone-900 border-2 border-red-700 rounded-2xl p-8 shadow-2xl max-w-lg w-full">
-              <h2 className="text-5xl font-bold mb-4 text-red-300">最終確認</h2>
-              <p className="text-2xl mb-8 text-red-400">この操作は部長に許可された場合にのみ有効です。</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-gray-800 p-4 text-center">
+          <div className="bg-white border-2 border-red-300 rounded-2xl p-8 shadow-2xl max-w-lg w-full">
+              <h2 className="text-5xl font-bold mb-4 text-red-700">最終確認</h2>
+              <p className="text-2xl mb-8 text-red-600">この操作は部長に許可された場合にのみ有効です。</p>
               <form onSubmit={handleSubmit} className="w-full space-y-6">
                   <label htmlFor="reset-password" className="sr-only">専用パスワード</label>
-                  <input id="reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 bg-stone-800 border border-red-500 rounded-md text-center text-2xl text-white focus:ring-2 focus:ring-red-400 focus:outline-none" placeholder="専用パスワード" autoFocus aria-required="true"/>
-                  <button type="submit" className="w-full text-3xl font-semibold py-5 px-4 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">実行</button>
+                  <input id="reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 bg-white border border-red-300 rounded-md text-center text-2xl text-gray-900 focus:ring-2 focus:ring-red-500 focus:outline-none" placeholder="専用パスワード" autoFocus aria-required="true"/>
+                  <button type="submit" className="w-full text-3xl font-semibold py-5 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">実行</button>
               </form>
           </div>
-          <button onClick={onBack} className="mt-12 text-4xl font-semibold py-5 px-10 bg-stone-800 border border-stone-600 hover:bg-stone-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">&larr; 管理者画面に戻る</button>
+          <button onClick={onBack} className="mt-12 text-4xl font-semibold py-5 px-10 bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">&larr; 管理者画面に戻る</button>
       </div>
     );
 };

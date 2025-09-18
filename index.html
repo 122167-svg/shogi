@@ -37,6 +37,25 @@
           opacity: 0;
         }
       }
+      @keyframes confetti-sway {
+        0% { transform: translateY(0) rotateZ(0deg) translateX(0); opacity: 1; }
+        100% { transform: translateY(105vh) rotateZ(720deg) translateX(100px); opacity: 0; }
+      }
+       @keyframes confetti-sway-reverse {
+        0% { transform: translateY(0) rotateZ(0deg) translateX(0); opacity: 1; }
+        100% { transform: translateY(105vh) rotateZ(360deg) translateX(-100px); opacity: 0; }
+      }
+      @keyframes confetti-zig-zag {
+        0% { transform: translateY(0) rotateZ(0deg) translateX(0); opacity: 1; }
+        25% { transform: translateY(25vh) rotateZ(180deg) translateX(-50px); }
+        50% { transform: translateY(50vh) rotateZ(360deg) translateX(50px); }
+        75% { transform: translateY(75vh) rotateZ(540deg) translateX(-50px); }
+        100% { transform: translateY(105vh) rotateZ(720deg) translateX(0); opacity: 0; }
+      }
+      @keyframes confetti-spin-fast {
+        0% { transform: translateY(0) rotateZ(0deg); opacity: 1; }
+        100% { transform: translateY(105vh) rotateZ(2000deg); opacity: 0; }
+      }
       .sr-only {
         position: absolute;
         width: 1px;
