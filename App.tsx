@@ -4,6 +4,7 @@ declare const JSZip: any;
 
 // ========== データ型定義 ==========
 type View = 'main' | 'student' | 'thanks' | 'admin' | 'external' | 'parent' | 'ob' | 'adminLogin' | 'resetConfirmation';
+type AdminRole = 'full' | 'limited' | null;
 
 interface Student {
   grade: string;
@@ -43,7 +44,8 @@ const SHOGI_STRENGTH_CATEGORIES = ['特にない', '級位者', '有段者'];
 const KYU_RANKS = ['11級以下', '10級', '9級', '8級', '7級', '6級', '5級', '4級', '3級', '2級', '1級'];
 const DAN_RANKS = ['初段', '二段', '三段', '四段以上'];
 
-const ADMIN_PASSWORD = 'shogi';
+const LIMITED_ADMIN_PASSWORD = 'shogi';
+const FULL_ADMIN_PASSWORD = 'hidemura';
 const defaultMessages = {
     external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレットを取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
     student: "希望する場合はパンフレットを受け取ってください。\n※簡単な戦法研究や詰将棋が掲載されているので、周りの人より強くなりたいという人はぜひ読んでみて下さい！\n混雑時は外部の方優先で対応させていただきます。\n移動などをお願いする場合がありますが、将棋部員の指示に従ってください。\nご理解・ご協力をお願いします。\n現在、将棋部では体験入部・入部を受け付けています。\n興味があれば、人数は問いませんので気軽に来て下さい！",
@@ -85,6 +87,7 @@ interface VisitorContextType {
   teacherVisitors: TeacherVisitor[];
   customMessages: Record<string, string>;
   notification: NotificationMessage | null;
+  adminRole: AdminRole;
   setNotification: (notification: NotificationMessage | null) => void;
   setCustomMessages: (messages: Record<string, string>) => void;
   handleStudentSubmit: (students: Omit<Student, 'timestamp'>[]) => void;
@@ -104,7 +107,9 @@ const VisitorProvider: React.FC<{
     setView: React.Dispatch<React.SetStateAction<View>>;
     setLastVisitorType: React.Dispatch<React.SetStateAction<VisitorType>>;
     setIsAdminAuthenticated: React.Dispatch<React.SetStateAction<boolean>>;
-}> = ({ children, setView, setLastVisitorType, setIsAdminAuthenticated }) => {
+    adminRole: AdminRole;
+    setAdminRole: React.Dispatch<React.SetStateAction<AdminRole>>;
+}> = ({ children, setView, setLastVisitorType, setIsAdminAuthenticated, adminRole, setAdminRole }) => {
     const [notification, setNotification] = useState<NotificationMessage | null>(null);
     const [externalVisitors, setExternalVisitors] = useLocalStorage<ExternalVisitorGroup[]>('shogi_externalVisitors', []);
     const [studentVisitors, setStudentVisitors] = useLocalStorage<Student[]>('shogi_studentVisitors', []);
@@ -155,6 +160,10 @@ const VisitorProvider: React.FC<{
     }, [setTeacherVisitors, setView, setLastVisitorType]);
     
     const handleConfirmReset = useCallback((password: string) => {
+        if (adminRole !== 'full') {
+            setNotification({ message: 'この操作を実行する権限がありません。', type: 'error' });
+            return;
+        }
         if (password === '306') {
             setExternalVisitors([]);
             setStudentVisitors([]);
@@ -166,18 +175,27 @@ const VisitorProvider: React.FC<{
         } else {
             setNotification({ message: 'パスワードが違います。', type: 'error' });
         }
-    }, [setExternalVisitors, setStudentVisitors, setParentVisitors, setAlumniVisitors, setTeacherVisitors, setView]);
+    }, [adminRole, setExternalVisitors, setStudentVisitors, setParentVisitors, setAlumniVisitors, setTeacherVisitors, setView]);
     
     const handleAdminLogin = useCallback((password: string) => {
-        if (password === ADMIN_PASSWORD) {
+        if (password === FULL_ADMIN_PASSWORD) {
             setIsAdminAuthenticated(true);
+            setAdminRole('full');
+            setView('admin');
+        } else if (password === LIMITED_ADMIN_PASSWORD) {
+            setIsAdminAuthenticated(true);
+            setAdminRole('limited');
             setView('admin');
         } else {
             setNotification({ message: 'パスワードが違います。', type: 'error' });
         }
-    }, [setIsAdminAuthenticated, setView]);
+    }, [setIsAdminAuthenticated, setAdminRole, setView]);
 
     const handleDeleteVisitor = useCallback((visitorType: 'students' | 'externals' | 'parents' | 'alumni' | 'teachers', timestamp: string) => {
+        if (adminRole !== 'full') {
+            setNotification({ message: 'この操作を実行する権限がありません。', type: 'error' });
+            return;
+        }
         if (window.confirm('この来場者データを本当に削除しますか？この操作は元に戻せません。')) {
             switch (visitorType) {
                 case 'students': setStudentVisitors(prev => prev.filter(v => v.timestamp !== timestamp)); break;
@@ -188,13 +206,13 @@ const VisitorProvider: React.FC<{
             }
             setNotification({ message: 'データを削除しました。', type: 'success' });
         }
-    }, [setStudentVisitors, setExternalVisitors, setParentVisitors, setAlumniVisitors, setTeacherVisitors]);
+    }, [adminRole, setStudentVisitors, setExternalVisitors, setParentVisitors, setAlumniVisitors, setTeacherVisitors]);
 
     const value = {
         studentVisitors, externalVisitors, parentVisitors, alumniVisitors, teacherVisitors,
         customMessages, notification, setNotification, setCustomMessages,
         handleStudentSubmit, handleExternalSubmit, handleParentSubmit, handleAlumniSubmit, handleTeacherSubmit,
-        handleDeleteVisitor, handleConfirmReset, handleAdminLogin
+        handleDeleteVisitor, handleConfirmReset, handleAdminLogin, adminRole
     };
 
     return <VisitorContext.Provider value={value}>{children}</VisitorContext.Provider>;
@@ -301,7 +319,7 @@ const AdminLogin: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 };
 
 const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }> = ({ onBack, onNavigateToReset }) => {
-  const { studentVisitors, externalVisitors, parentVisitors, alumniVisitors, teacherVisitors, setNotification, handleDeleteVisitor, customMessages, setCustomMessages } = useVisitorContext();
+  const { studentVisitors, externalVisitors, parentVisitors, alumniVisitors, teacherVisitors, setNotification, handleDeleteVisitor, customMessages, setCustomMessages, adminRole } = useVisitorContext();
   const [adminSubView, setAdminSubView] = useState<'menu' | 'students' | 'externals' | 'parents' | 'alumni' | 'teachers'>('menu');
   const [editedMessages, setEditedMessages] = useState(customMessages);
   
@@ -386,18 +404,18 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
     const currentData = dataMap[adminSubView];
     
     const headers: Record<string, JSX.Element> = {
-        students: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">学年</th><th scope="col" className="p-2">クラス</th><th scope="col" className="p-2">番号</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2 text-right">操作</th></>,
-        externals: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2 text-right">操作</th></>,
-        parents: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2">子息が部員</th><th scope="col" className="p-2 text-right">操作</th></>,
-        alumni: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2">元部員</th><th scope="col" className="p-2 text-right">操作</th></>,
-        teachers: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2 text-right">操作</th></>,
+        students: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">学年</th><th scope="col" className="p-2">クラス</th><th scope="col" className="p-2">番号</th><th scope="col" className="p-2">棋力</th>{adminRole === 'full' && <th scope="col" className="p-2 text-right">操作</th>}</>,
+        externals: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th>{adminRole === 'full' && <th scope="col" className="p-2 text-right">操作</th>}</>,
+        parents: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2">子息が部員</th>{adminRole === 'full' && <th scope="col" className="p-2 text-right">操作</th>}</>,
+        alumni: <><th scope="col" className="p-2">受付日時</th><th scope="col" className="p-2">人数</th><th scope="col" className="p-2">棋力</th><th scope="col" className="p-2">元部員</th>{adminRole === 'full' && <th scope="col" className="p-2 text-right">操作</th>}</>,
+        teachers: <><th scope="col" className="p-2">受付日時</th>{adminRole === 'full' && <th scope="col" className="p-2 text-right">操作</th>}</>,
     };
     const rowRenderers: Record<string, (item: any) => JSX.Element> = {
-        students: (s) => <tr key={s.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(s.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{s.grade}</td><td className="p-2 text-gray-800">{s.class}</td><td className="p-2 text-gray-800">{s.studentId}</td><td className="p-2 text-gray-800">{s.shogiStrength}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('students', s.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(s.timestamp).toLocaleString('ja-JP')}の在校生データを削除`}>削除</button></td></tr>,
-        externals: (g) => <tr key={g.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(g.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{g.count}名</td><td className="p-2 text-gray-800">{g.shogiStrength}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('externals', g.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(g.timestamp).toLocaleString('ja-JP')}の外部来場者データを削除`}>削除</button></td></tr>,
-        parents: (p) => <tr key={p.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(p.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{p.count}名</td><td className="p-2 text-gray-800">{p.shogiStrength}</td><td className="p-2 text-gray-800">{p.sonInClub ? 'はい' : 'いいえ'}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('parents', p.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(p.timestamp).toLocaleString('ja-JP')}の保護者データを削除`}>削除</button></td></tr>,
-        alumni: (a) => <tr key={a.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(a.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{a.count}名</td><td className="p-2 text-gray-800">{a.shogiStrength}</td><td className="p-2 text-gray-800">{a.wasInClub ? 'はい' : 'いいえ'}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('alumni', a.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(a.timestamp).toLocaleString('ja-JP')}のOBデータを削除`}>削除</button></td></tr>,
-        teachers: (t) => <tr key={t.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(t.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('teachers', t.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(t.timestamp).toLocaleString('ja-JP')}の教職員データを削除`}>削除</button></td></tr>,
+        students: (s) => <tr key={s.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(s.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{s.grade}</td><td className="p-2 text-gray-800">{s.class}</td><td className="p-2 text-gray-800">{s.studentId}</td><td className="p-2 text-gray-800">{s.shogiStrength}</td>{adminRole === 'full' && <td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('students', s.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(s.timestamp).toLocaleString('ja-JP')}の在校生データを削除`}>削除</button></td>}</tr>,
+        externals: (g) => <tr key={g.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(g.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{g.count}名</td><td className="p-2 text-gray-800">{g.shogiStrength}</td>{adminRole === 'full' && <td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('externals', g.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(g.timestamp).toLocaleString('ja-JP')}の外部来場者データを削除`}>削除</button></td>}</tr>,
+        parents: (p) => <tr key={p.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(p.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{p.count}名</td><td className="p-2 text-gray-800">{p.shogiStrength}</td><td className="p-2 text-gray-800">{p.sonInClub ? 'はい' : 'いいえ'}</td>{adminRole === 'full' && <td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('parents', p.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(p.timestamp).toLocaleString('ja-JP')}の保護者データを削除`}>削除</button></td>}</tr>,
+        alumni: (a) => <tr key={a.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(a.timestamp).toLocaleString('ja-JP')}</td><td className="p-2 text-gray-800">{a.count}名</td><td className="p-2 text-gray-800">{a.shogiStrength}</td><td className="p-2 text-gray-800">{a.wasInClub ? 'はい' : 'いいえ'}</td>{adminRole === 'full' && <td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('alumni', a.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(a.timestamp).toLocaleString('ja-JP')}のOBデータを削除`}>削除</button></td>}</tr>,
+        teachers: (t) => <tr key={t.timestamp} className="border-t border-gray-200 hover:bg-gray-50"><td className="p-2 text-sm text-gray-500">{new Date(t.timestamp).toLocaleString('ja-JP')}</td>{adminRole === 'full' && <td className="p-2 text-right"><button onClick={() => handleDeleteVisitor('teachers', t.timestamp)} className="text-red-600 hover:text-red-800 font-semibold px-3 py-1 rounded-md hover:bg-red-100 transition-colors" aria-label={`${new Date(t.timestamp).toLocaleString('ja-JP')}の教職員データを削除`}>削除</button></td>}</tr>,
     };
 
     return (
@@ -447,6 +465,7 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
                 全データをCSVで一括バックアップ
             </button>
         </section>
+        {adminRole === 'full' && (
         <section className="bg-white border border-gray-200 p-6 rounded-lg shadow-lg mb-8" aria-labelledby="message-edit-title">
             <h3 id="message-edit-title" className="text-3xl font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">完了メッセージの編集</h3>
             <div className="space-y-6">
@@ -461,11 +480,14 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
                 </button>
             </div>
         </section>
+        )}
+        {adminRole === 'full' && (
         <section className="bg-red-50 border border-red-200 p-6 rounded-lg mb-8 shadow-lg" aria-labelledby="danger-zone-title">
           <h3 id="danger-zone-title" className="text-3xl font-semibold text-red-800 mb-4 border-b border-red-200 pb-2">危険ゾーン</h3>
           <p className="text-xl text-red-600 mb-4">この操作は元に戻せません。すべての来場者データが削除されます。</p>
           <button onClick={onNavigateToReset} className="w-full md:w-auto text-2xl font-semibold py-4 px-8 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg">全データをリセット</button>
         </section>
+        )}
       </div>
     </div>
   );
@@ -947,58 +969,16 @@ const ResetConfirmationView: React.FC<{ onBack: () => void }> = ({ onBack }) => 
     );
 };
 
-const AppContent: React.FC = () => {
-    const [view, setView] = useState<View>('main');
-    const [lastVisitorType, setLastVisitorType] = useState<VisitorType>(null);
-    const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-    const { handleTeacherSubmit } = useVisitorContext();
-
-    const handleSelect = useCallback((selection: 'student' | 'external' | 'parent' | 'ob' | 'teacher') => {
-        if (selection === 'teacher') { handleTeacherSubmit(); } 
-        else { setView(selection); }
-    }, [handleTeacherSubmit]);
-
-    const handleReturnToMain = useCallback(() => setView('main'), []);
-    const handleNavigateToReset = useCallback(() => setView('resetConfirmation'), []);
-    const handleAdminAccess = useCallback(() => setView('adminLogin'), []);
-
-    const renderView = () => {
-        switch (view) {
-            case 'student': return <StudentForm onBack={handleReturnToMain} />;
-            case 'external': return <GroupForm title="ようこそ！" onSubmit={useVisitorContext().handleExternalSubmit} onBack={handleReturnToMain} />;
-            case 'parent': return <GroupForm title="保護者の方" onSubmit={useVisitorContext().handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
-            case 'ob': return <GroupForm title="OBの方" onSubmit={useVisitorContext().handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
-            case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
-            case 'adminLogin': return <AdminLogin onBack={handleReturnToMain} />;
-            case 'resetConfirmation': return <ResetConfirmationView onBack={() => setView('admin')} />;
-            case 'admin': return isAdminAuthenticated ? <AdminView onBack={handleReturnToMain} onNavigateToReset={handleNavigateToReset} /> : <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
-            default: return <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
-        }
-    };
-    
-    return (
-        <>
-          <Notification />
-          <div key={view} className="view-container">
-            {renderView()}
-          </div>
-        </>
-    );
-}
-
 const App: React.FC = () => {
-  const [viewState, setViewState] = useState<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean}>({
+  const [viewState, setViewState] = useState<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean, adminRole: AdminRole}>({
     view: 'main',
     lastVisitorType: null,
     isAdminAuthenticated: false,
+    adminRole: null,
   });
 
   return (
     <VisitorProvider
-      // FIX: Handle updater function form for state setters.
-      // The props `setView`, `setLastVisitorType`, and `setIsAdminAuthenticated` are of type `React.Dispatch<React.SetStateAction<...>>`.
-      // This means they can receive a value OR a function to update the state. The original implementation didn't handle the function case,
-      // leading to a type error. The fix checks if the received action is a function and executes it with the previous state value if so.
       setView={useCallback((view: React.SetStateAction<View>) => {
         setViewState(s => ({ ...s, view: typeof view === 'function' ? view(s.view) : view }));
       }, [])}
@@ -1008,6 +988,10 @@ const App: React.FC = () => {
       setIsAdminAuthenticated={useCallback((isAdminAuthenticated: React.SetStateAction<boolean>) => {
         setViewState(s => ({ ...s, isAdminAuthenticated: typeof isAdminAuthenticated === 'function' ? isAdminAuthenticated(s.isAdminAuthenticated) : isAdminAuthenticated }));
       }, [])}
+      adminRole={viewState.adminRole}
+      setAdminRole={useCallback((adminRole: React.SetStateAction<AdminRole>) => {
+        setViewState(s => ({ ...s, adminRole: typeof adminRole === 'function' ? adminRole(s.adminRole) : adminRole }));
+      }, [])}
     >
         <AppContentWrapper viewState={viewState} setViewState={setViewState} />
     </VisitorProvider>
@@ -1015,8 +999,8 @@ const App: React.FC = () => {
 };
 
 const AppContentWrapper: React.FC<{
-  viewState: {view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean};
-  setViewState: React.Dispatch<React.SetStateAction<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean}>>;
+  viewState: {view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean, adminRole: AdminRole};
+  setViewState: React.Dispatch<React.SetStateAction<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean, adminRole: AdminRole}>>;
 }> = ({ viewState, setViewState }) => {
     const { view, lastVisitorType, isAdminAuthenticated } = viewState;
     const { handleTeacherSubmit, handleExternalSubmit, handleParentSubmit, handleAlumniSubmit } = useVisitorContext();
@@ -1030,6 +1014,16 @@ const AppContentWrapper: React.FC<{
     }, [handleTeacherSubmit, setViewState]);
 
     const handleReturnToMain = useCallback(() => setViewState(s => ({...s, view: 'main'})), [setViewState]);
+
+    const handleAdminLogout = useCallback(() => {
+        setViewState(s => ({
+            ...s,
+            view: 'main',
+            isAdminAuthenticated: false,
+            adminRole: null,
+        }));
+    }, [setViewState]);
+
     const handleNavigateToReset = useCallback(() => setViewState(s => ({...s, view: 'resetConfirmation'})), [setViewState]);
     const handleAdminAccess = useCallback(() => setViewState(s => ({...s, view: 'adminLogin'})), [setViewState]);
 
@@ -1042,7 +1036,7 @@ const AppContentWrapper: React.FC<{
             case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
             case 'adminLogin': return <AdminLogin onBack={handleReturnToMain} />;
             case 'resetConfirmation': return <ResetConfirmationView onBack={() => setViewState(s => ({...s, view: 'admin'}))} />;
-            case 'admin': return isAdminAuthenticated ? <AdminView onBack={handleReturnToMain} onNavigateToReset={handleNavigateToReset} /> : <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
+            case 'admin': return isAdminAuthenticated ? <AdminView onBack={handleAdminLogout} onNavigateToReset={handleNavigateToReset} /> : <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
             default: return <MainScreen onSelect={handleSelect} onAdminAccess={handleAdminAccess} />;
         }
     };
