@@ -1014,7 +1014,7 @@ const AppContentWrapper: React.FC<{
     const renderView = () => {
         switch (view) {
             case 'student': return <StudentForm onBack={handleReturnToMain} />;
-            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="全部で何名様でいらっしゃいましたか？" />;
+            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="保護者様を含めて何名様でいらっしゃいましたか？" />;
             case 'parent': return <GroupForm title="保護者の方" onSubmit={handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
             case 'ob': return <GroupForm title="OBの方" onSubmit={handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
             case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
