@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useContext, createContext } from 'react';
+import React, { useState, useEffect, useCallback, useContext, createContext, useRef } from 'react';
 
 declare const JSZip: any;
 
@@ -48,7 +48,7 @@ const DAN_RANKS = ['初段', '二段', '三段', '四段以上'];
 const LIMITED_ADMIN_PASSWORD = 'shogi';
 const FULL_ADMIN_PASSWORD = 'hidemura';
 const defaultMessages = {
-    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレットを取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、”部員対局受付”までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
+    external: "有段者の方は赤いパンフレットを、級位者初心者の方は青いパンフレットを取って、将棋サロンをお楽しみください。\nまた、部員との対局を希望される方は、お手数ですが、前にいる部員までお申し出ください。\nその他何か不明点等ございましたら、近くにいる部員にお気軽にお声掛けください。",
     student: "希望する場合はパンフレットを受け取ってください。\n※簡単な戦法研究や詰将棋が掲載されているので、周りの人より強くなりたいという人はぜひ読んでみて下さい！\n混雑時は外部の方優先で対応させていただきます。\n移動などをお願いする場合がありますが、将棋部員の指示に従ってください。\nご理解・ご協力をお願いします。\n現在、将棋部では体験入部・入部を受け付けています。\n興味があれば、人数は問いませんので気軽に来て下さい！",
     parent: "将棋サロンへようこそ！将棋部の雰囲気をお楽しみください。何かご不明な点がございましたら、お近くの部員までお声がけください。",
     ob: "希望される場合は、パンフレット（赤:有段者用　青：級位者用）を取ってください。\nお時間がありましたら、ぜひ現役部員との対局もお楽しみください。",
@@ -366,7 +366,7 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
       };
 
       processVisitorData(studentVisitors, '在校生来場者', { timestamp: '受付日時', grade: '学年', class: 'クラス', studentId: '出席番号', shogiStrength: '棋力' });
-      processVisitorData(externalVisitors, '外部来場者', { timestamp: '受付日時', count: '人数', shogiStrength: '棋力' });
+      processVisitorData(externalVisitors, '小中学生来場者', { timestamp: '受付日時', count: '人数', shogiStrength: '棋力' });
       processVisitorData(parentVisitors, '保護者来場者', { timestamp: '受付日時', count: '人数', shogiStrength: '棋力', sonInClub: 'ご子息は将棋部員か' });
       processVisitorData(alumniVisitors, 'OB来場者', { timestamp: '受付日時', count: '人数', shogiStrength: '棋力', wasInClub: '在校時将棋部員か' });
       processVisitorData(teacherVisitors, '教職員来場者', { timestamp: '受付日時' });
@@ -396,7 +396,7 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
 
 
   if (adminSubView !== 'menu') {
-    const titles: Record<string, string> = { students: '在校生', externals: '外部', parents: '保護者', alumni: 'OB', teachers: '教職員' };
+    const titles: Record<string, string> = { students: '在校生', externals: '小・中学生', parents: '保護者', alumni: 'OB', teachers: '教職員' };
     const listTitle = `${titles[adminSubView]} 来場者一覧`;
 
     const dataMap: Record<string, any[]> = {
@@ -444,7 +444,7 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             <div><p className="text-2xl text-gray-500">合計</p><p className="text-5xl font-bold text-gray-900">{totalVisitors}</p></div>
             <div><p className="text-2xl text-gray-500">在校生</p><p className="text-5xl font-bold text-gray-900">{studentVisitors.length}</p></div>
-            <div><p className="text-2xl text-gray-500">外部・他</p><p className="text-5xl font-bold text-gray-900">{externalCount + parentCount + alumniCount}</p></div>
+            <div><p className="text-2xl text-gray-500">小中学生・他</p><p className="text-5xl font-bold text-gray-900">{externalCount + parentCount + alumniCount}</p></div>
             <div><p className="text-2xl text-gray-500">教職員</p><p className="text-5xl font-bold text-gray-900">{teacherCount}</p></div>
           </div>
         </section>
@@ -455,7 +455,7 @@ const AdminView: React.FC<{ onBack: () => void; onNavigateToReset: () => void; }
             <button onClick={() => setAdminSubView('students')} className="text-3xl font-semibold py-8 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">在校生</button>
             <button onClick={() => setAdminSubView('parents')} className="text-3xl font-semibold py-8 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">保護者</button>
             <button onClick={() => setAdminSubView('alumni')} className="text-3xl font-semibold py-8 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">OB</button>
-            <button onClick={() => setAdminSubView('externals')} className="text-3xl font-semibold py-8 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">外部</button>
+            <button onClick={() => setAdminSubView('externals')} className="text-3xl font-semibold py-8 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">小・中学生</button>
             <button onClick={() => setAdminSubView('teachers')} className="text-3xl font-semibold py-8 px-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl transition-all duration-300 transform active:scale-95 shadow-lg">教職員</button>
           </div>
         </section>
@@ -514,15 +514,10 @@ const MainScreen: React.FC<{ onSelect: (selection: 'student' | 'external' | 'par
         <span className="inline-block mt-4 bg-amber-300 text-stone-900 px-8 py-2 rounded-lg text-7xl tracking-widest shadow-md">受付</span>
       </h1>
       <p className="text-3xl text-stone-200 mb-12">該当するボタンを押してください</p>
-       <div className="text-center mb-8">
-            <span className="bg-green-800 border-2 border-green-500 text-green-100 text-4xl font-bold py-4 px-8 rounded-xl shadow-lg">
-              状況：空席
-            </span>
-       </div>
       <div className="w-full max-w-5xl space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <button onClick={() => onSelect('student')} className={`${buttonBaseStyle} text-4xl py-16 px-4 bg-blue-800 border-blue-600 hover:bg-blue-700`}><StudentIcon />在校生の方</button>
-          <button onClick={() => onSelect('external')} className={`${buttonBaseStyle} text-4xl py-16 px-4 bg-stone-700 border-stone-500 hover:bg-stone-600`}><ExternalIcon />外部の方</button>
+          <button onClick={() => onSelect('external')} className={`${buttonBaseStyle} text-4xl py-16 px-4 bg-stone-700 border-stone-500 hover:bg-stone-600`}><ExternalIcon />小・中学生の方</button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <button onClick={() => onSelect('parent')} className={`${buttonBaseStyle} text-3xl py-10 px-4 bg-green-800 border-green-600 hover:bg-green-700`}><ParentIcon />在校生保護者の方</button>
@@ -550,6 +545,7 @@ const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
   const [hasAgreed, setHasAgreed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const keypadContainerRef = useRef<HTMLDivElement>(null);
 
   const resetCurrentStudentForm = () => { setGrade(''); setStudentClass(''); setStudentId(''); };
   
@@ -731,8 +727,19 @@ const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
             </div>
             <div>
                 <label id="student-id-label" className="block text-2xl mb-2 text-white">出席番号</label>
-                <div role="status" aria-labelledby="student-id-label" className="w-full p-3 bg-stone-900 border border-stone-700 rounded-md text-center text-5xl h-20 flex items-center justify-center mb-2">{studentId || <span className="text-stone-500">番号</span>}</div>
-                <NumericKeypad value={studentId} onValueChange={setStudentId} />
+                <div 
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => keypadContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') keypadContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }}
+                    aria-labelledby="student-id-label" 
+                    className="w-full p-3 bg-stone-900 border border-stone-700 rounded-md text-center text-5xl h-20 flex items-center justify-center mb-2 cursor-pointer transition-colors hover:bg-stone-800"
+                >
+                    {studentId || <span className="text-stone-500">番号</span>}
+                </div>
+                <div ref={keypadContainerRef}>
+                    <NumericKeypad value={studentId} onValueChange={setStudentId} />
+                </div>
             </div>
         </div>
         <div className="w-full max-w-md mt-8">
@@ -1007,7 +1014,7 @@ const AppContentWrapper: React.FC<{
     const renderView = () => {
         switch (view) {
             case 'student': return <StudentForm onBack={handleReturnToMain} />;
-            case 'external': return <GroupForm title="ようこそ！" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="保護者の方を含めて何名様でいらっしゃいましたか？" />;
+            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="全部で何名様でいらっしゃいましたか？" />;
             case 'parent': return <GroupForm title="保護者の方" onSubmit={handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
             case 'ob': return <GroupForm title="OBの方" onSubmit={handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
             case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;

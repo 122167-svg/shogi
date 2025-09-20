@@ -56,6 +56,30 @@
         0% { transform: translateY(0) rotateZ(0deg); opacity: 1; }
         100% { transform: translateY(105vh) rotateZ(2000deg); opacity: 0; }
       }
+      .bubble {
+        position: absolute;
+        bottom: -100px;
+        background-color: rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        animation: bubble-rise 25s infinite ease-in;
+        pointer-events: none;
+      }
+      @keyframes bubble-rise {
+        0% {
+          transform: translateY(0) translateX(0);
+          opacity: 0.8;
+        }
+        50% {
+          transform: translateX(30px);
+        }
+        99% {
+          opacity: 0.1;
+        }
+        100% {
+          transform: translateY(-120vh) translateX(-30px);
+          opacity: 0;
+        }
+      }
       .sr-only {
         position: absolute;
         width: 1px;
