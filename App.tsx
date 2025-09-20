@@ -721,33 +721,33 @@ const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
             <span className="align-middle text-3xl">{totalStudents}</span>
             <span className="align-middle text-3xl ml-2">人目</span>
         </div>
-        <div className="w-full max-w-2xl space-y-8">
-            <div className="grid grid-cols-2 gap-8">
-                <div>
+        <div className="w-full max-w-4xl space-y-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
+                <div className="md:col-span-1">
                     <label className="block text-2xl mb-4 text-white text-center">学年</label>
                     <div className="grid grid-cols-3 gap-2">{GRADES.map(g => <button type="button" key={g} onClick={() => setGrade(g)} className={`p-4 text-xl rounded-md transition-all duration-200 ${grade === g ? 'bg-amber-400 text-stone-900 font-bold shadow-md' : 'bg-stone-800 border border-stone-600 hover:bg-stone-700 text-white'}`}>{g}</button>)}</div>
                 </div>
-                <div>
+                <div className="md:col-span-1">
                     <label className="block text-2xl mb-4 text-white text-center">クラス</label>
                     <div className="grid grid-cols-4 gap-2">{CLASSES.map(c => <button type="button" key={c} onClick={() => setStudentClass(c)} className={`p-4 text-xl rounded-md transition-all duration-200 ${studentClass === c ? 'bg-amber-400 text-stone-900 font-bold shadow-md' : 'bg-stone-800 border border-stone-600 hover:bg-stone-700 text-white'}`}>{c}</button>)}</div>
                 </div>
+                <div className="md:col-span-1">
+                    <label id="student-id-label" className="block text-2xl mb-2 text-white text-center">出席番号</label>
+                    <div 
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => keypadContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') keypadContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }}
+                        aria-labelledby="student-id-label" 
+                        className="w-full mx-auto p-3 bg-stone-900 border border-stone-700 rounded-md text-center text-5xl h-20 flex items-center justify-center mb-2 cursor-pointer transition-colors hover:bg-stone-800"
+                    >
+                        {studentId || <span className="text-stone-500">番号</span>}
+                    </div>
+                </div>
             </div>
 
-            <div>
-                <label id="student-id-label" className="block text-2xl mb-2 text-white text-center">出席番号</label>
-                <div 
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => keypadContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') keypadContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }}
-                    aria-labelledby="student-id-label" 
-                    className="w-full max-w-sm mx-auto p-3 bg-stone-900 border border-stone-700 rounded-md text-center text-5xl h-20 flex items-center justify-center mb-2 cursor-pointer transition-colors hover:bg-stone-800"
-                >
-                    {studentId || <span className="text-stone-500">番号</span>}
-                </div>
-                <div ref={keypadContainerRef}>
-                    <NumericKeypad value={studentId} onValueChange={setStudentId} />
-                </div>
+            <div ref={keypadContainerRef} className="w-full max-w-sm mx-auto">
+                <NumericKeypad value={studentId} onValueChange={setStudentId} />
             </div>
         </div>
         <div className="w-full max-w-2xl mt-8">
@@ -759,7 +759,7 @@ const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
   );
 };
 
-const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: any) => void; extraStep?: { question: string; onSelect: (value: boolean) => void; }; countPrompt?: string; }> = ({ title, onBack, onSubmit, extraStep, countPrompt }) => {
+const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: any) => void; extraStep?: { question: string; onSelect: (value: boolean) => void; }; countPrompt?: React.ReactNode; }> = ({ title, onBack, onSubmit, extraStep, countPrompt }) => {
     const { setNotification } = useVisitorContext();
     const [count, setCount] = useState<number | null>(null);
     const [customCount, setCustomCount] = useState('');
@@ -1022,7 +1022,7 @@ const AppContentWrapper: React.FC<{
     const renderView = () => {
         switch (view) {
             case 'student': return <StudentForm onBack={handleReturnToMain} />;
-            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="全部で何名様でいらっしゃいましたか？" />;
+            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt={<><span className="font-bold text-amber-300">保護者の方を含めて</span>何名でいらっしゃいましたか？</>} />;
             case 'parent': return <GroupForm title="保護者の方" onSubmit={handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
             case 'ob': return <GroupForm title="OBの方" onSubmit={handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
             case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
@@ -1043,7 +1043,7 @@ const AppContentWrapper: React.FC<{
     );
 };
 
-const SleepScreen: React.FC<{ onWake: () => void }> = ({ onWake }) => {
+const SleepScreen: React.FC<{ onWake: () => void; isWaking: boolean; }> = ({ onWake, isWaking }) => {
     const handleWake = (e: React.MouseEvent | React.TouchEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1058,26 +1058,54 @@ const SleepScreen: React.FC<{ onWake: () => void }> = ({ onWake }) => {
             'border-amber-400/50 bg-amber-400/10',
             'border-rose-500/50 bg-rose-500/10',
         ];
+        
+        const generatedBubbles = [];
+        const numBubbles = 60; // Increased count for a fuller effect
 
-        return Array.from({ length: 40 }).map((_, i) => {
+        enum AnimationType { Rise, FromLeft, FromRight };
+
+        for (let i = 0; i < numBubbles; i++) {
             const size = Math.random() * 80 + 20; // 20px to 100px
-            const style = {
+            const style: React.CSSProperties = {
                 width: `${size}px`,
                 height: `${size}px`,
-                left: `${Math.random() * 100}%`,
-                animationDuration: `${Math.random() * 15 + 15}s`, // 15s to 30s
-                animationDelay: `${Math.random() * 20}s`,
                 borderWidth: `${Math.max(1, size / 30)}px`,
-                '--sway-amount': `${(Math.random() - 0.5) * 100}px`
-            } as React.CSSProperties;
+                animationDuration: `${Math.random() * 20 + 20}s`, // 20s to 40s for a slower feel
+                animationDelay: `${Math.random() * 25}s`,
+            };
             const colorClass = bubbleColors[i % bubbleColors.length];
+            const animationType = i % 3; // Distribute animations: 0 for Rise, 1 for Left, 2 for Right
 
-            return <div key={i} className={`colorful-bubble ${colorClass}`} style={style} aria-hidden="true" />;
-        });
+            switch(animationType) {
+                case AnimationType.FromLeft:
+                    style.animationName = 'sway-from-left';
+                    style.left = '-150px';
+                    style.top = `${Math.random() * 100}%`;
+                    style['--sway-y'] = `${(Math.random() - 0.5) * 200}px`;
+                    break;
+                case AnimationType.FromRight:
+                    style.animationName = 'sway-from-right';
+                    style.right = '-150px';
+                    style.top = `${Math.random() * 100}%`;
+                    style['--sway-y'] = `${(Math.random() - 0.5) * 200}px`;
+                    break;
+                case AnimationType.Rise:
+                default:
+                    style.animationName = 'rise-and-sway';
+                    style.bottom = '-150px';
+                    style.left = `${Math.random() * 100}%`;
+                    style['--sway-amount'] = `${(Math.random() - 0.5) * 100}px`;
+                    break;
+            }
+
+            generatedBubbles.push(<div key={i} className={`colorful-bubble ${colorClass}`} style={style} aria-hidden="true" />);
+        }
+        return generatedBubbles;
+
     }, []);
 
     return (
-        <div onClick={handleWake} onTouchStart={handleWake} className="fixed inset-0 bg-black flex flex-col items-center justify-center cursor-pointer z-50 overflow-hidden" role="button" tabIndex={0} aria-label="受付画面に戻る">
+        <div onClick={handleWake} onTouchStart={handleWake} className={`fixed inset-0 bg-black flex flex-col items-center justify-center cursor-pointer z-50 overflow-hidden transition-opacity duration-500 ${isWaking ? 'opacity-0' : 'opacity-100'}`} role="button" tabIndex={0} aria-label="受付画面に戻る">
             <div className="absolute inset-0 pointer-events-none">
                 {bubbles}
             </div>
@@ -1104,9 +1132,10 @@ const App: React.FC = () => {
     adminRole: null,
   });
   const [isIdle, setIsIdle] = useState(false);
+  const [isWaking, setIsWaking] = useState(false);
 
   useEffect(() => {
-    if (viewState.view !== 'main' || isIdle) {
+    if (viewState.view !== 'main' || isIdle || isWaking) {
       return;
     }
 
@@ -1128,11 +1157,16 @@ const App: React.FC = () => {
       clearTimeout(idleTimer);
       events.forEach(event => window.removeEventListener(event, resetTimer));
     };
-  }, [viewState.view, isIdle]);
+  }, [viewState.view, isIdle, isWaking]);
 
   const handleWakeUp = useCallback(() => {
-    setIsIdle(false);
-  }, []);
+    if (isWaking) return;
+    setIsWaking(true);
+    setTimeout(() => {
+        setIsIdle(false);
+        setIsWaking(false);
+    }, 500);
+  }, [isWaking]);
 
   return (
     <VisitorProvider
@@ -1151,7 +1185,7 @@ const App: React.FC = () => {
       }, [])}
     >
         <AppContentWrapper viewState={viewState} setViewState={setViewState} />
-        {isIdle && <SleepScreen onWake={handleWakeUp} />}
+        {isIdle && <SleepScreen onWake={handleWakeUp} isWaking={isWaking} />}
     </VisitorProvider>
   );
 };
