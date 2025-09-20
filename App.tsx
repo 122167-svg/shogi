@@ -1014,7 +1014,7 @@ const AppContentWrapper: React.FC<{
     const renderView = () => {
         switch (view) {
             case 'student': return <StudentForm onBack={handleReturnToMain} />;
-            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="保護者様を含めて何名様でいらっしゃいましたか？" />;
+            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="全部で何名様でいらっしゃいましたか？" />;
             case 'parent': return <GroupForm title="保護者の方" onSubmit={handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
             case 'ob': return <GroupForm title="OBの方" onSubmit={handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
             case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
@@ -1036,34 +1036,51 @@ const AppContentWrapper: React.FC<{
 };
 
 const SleepScreen: React.FC<{ onWake: () => void }> = ({ onWake }) => {
-    const bubbles = React.useMemo(() => 
-        Array.from({ length: 30 }).map((_, i) => {
-            const size = Math.random() * 60 + 20; // 20px to 80px
+    const handleWake = (e: React.MouseEvent | React.TouchEvent) => {
+        e.stopPropagation();
+        onWake();
+    };
+
+    const bubbles = React.useMemo(() => {
+        const bubbleColors = [
+            'border-sky-400/50 bg-sky-400/10',
+            'border-lime-400/50 bg-lime-400/10',
+            'border-fuchsia-500/50 bg-fuchsia-500/10',
+            'border-amber-400/50 bg-amber-400/10',
+            'border-rose-500/50 bg-rose-500/10',
+        ];
+
+        return Array.from({ length: 40 }).map((_, i) => {
+            const size = Math.random() * 80 + 20; // 20px to 100px
             const style = {
                 width: `${size}px`,
                 height: `${size}px`,
                 left: `${Math.random() * 100}%`,
-                animationDuration: `${Math.random() * 15 + 20}s`, // 20s to 35s
-                animationDelay: `${Math.random() * 15}s`,
-            };
-            return <div key={i} className="bubble" style={style} aria-hidden="true" />;
-        }),
-    []);
+                animationDuration: `${Math.random() * 15 + 15}s`, // 15s to 30s
+                animationDelay: `${Math.random() * 20}s`,
+                borderWidth: `${Math.max(1, size / 30)}px`,
+                '--sway-amount': `${(Math.random() - 0.5) * 100}px`
+            } as React.CSSProperties;
+            const colorClass = bubbleColors[i % bubbleColors.length];
+
+            return <div key={i} className={`colorful-bubble ${colorClass}`} style={style} aria-hidden="true" />;
+        });
+    }, []);
 
     return (
-        <div onClick={onWake} onTouchStart={onWake} className="fixed inset-0 bg-stone-950 text-white flex flex-col items-center justify-center cursor-pointer z-50 overflow-hidden" role="button" tabIndex={0} aria-label="受付画面に戻る">
-            {bubbles}
+        <div onClick={handleWake} onTouchStart={handleWake} className="fixed inset-0 bg-black flex flex-col items-center justify-center cursor-pointer z-50 overflow-hidden" role="button" tabIndex={0} aria-label="受付画面に戻る">
+            <div className="absolute inset-0 pointer-events-none">
+                {bubbles}
+            </div>
             <div className="relative z-10 text-center p-8 flex flex-col items-center justify-center">
-                <div className="mb-16">
-                    <span className="bg-green-800 border-2 border-green-500 text-green-100 text-5xl font-bold py-5 px-10 rounded-2xl shadow-lg">
-                        状況：空席
-                    </span>
+                 <div className="main-bubble mb-16">
+                    <div className="main-bubble-text">空席</div>
                 </div>
-                <p className="text-5xl font-semibold text-stone-100 mb-32 leading-relaxed">
-                    巣鴨生・来場者問わず<br/>ご入場いただけます。
+                <p className="text-4xl text-stone-200 mb-20 leading-relaxed">
+                    どなたでもご入場いただけます
                 </p>
-                <p className="text-3xl text-stone-400 animate-pulse">
-                    画面をタッチすると、受付画面に移ります
+                <p className="text-3xl text-stone-300 animate-pulse">
+                    画面をタッチして受付を開始
                 </p>
             </div>
         </div>
