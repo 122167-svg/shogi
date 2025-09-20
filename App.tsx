@@ -975,35 +975,6 @@ const ResetConfirmationView: React.FC<{ onBack: () => void }> = ({ onBack }) => 
     );
 };
 
-const App: React.FC = () => {
-  const [viewState, setViewState] = useState<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean, adminRole: AdminRole}>({
-    view: 'main',
-    lastVisitorType: null,
-    isAdminAuthenticated: false,
-    adminRole: null,
-  });
-
-  return (
-    <VisitorProvider
-      setView={useCallback((view: React.SetStateAction<View>) => {
-        setViewState(s => ({ ...s, view: typeof view === 'function' ? view(s.view) : view }));
-      }, [])}
-      setLastVisitorType={useCallback((lastVisitorType: React.SetStateAction<VisitorType>) => {
-        setViewState(s => ({ ...s, lastVisitorType: typeof lastVisitorType === 'function' ? lastVisitorType(s.lastVisitorType) : lastVisitorType }));
-      }, [])}
-      setIsAdminAuthenticated={useCallback((isAdminAuthenticated: React.SetStateAction<boolean>) => {
-        setViewState(s => ({ ...s, isAdminAuthenticated: typeof isAdminAuthenticated === 'function' ? isAdminAuthenticated(s.isAdminAuthenticated) : isAdminAuthenticated }));
-      }, [])}
-      adminRole={viewState.adminRole}
-      setAdminRole={useCallback((adminRole: React.SetStateAction<AdminRole>) => {
-        setViewState(s => ({ ...s, adminRole: typeof adminRole === 'function' ? adminRole(s.adminRole) : adminRole }));
-      }, [])}
-    >
-        <AppContentWrapper viewState={viewState} setViewState={setViewState} />
-    </VisitorProvider>
-  );
-};
-
 const AppContentWrapper: React.FC<{
   viewState: {view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean, adminRole: AdminRole};
   setViewState: React.Dispatch<React.SetStateAction<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean, adminRole: AdminRole}>>;
@@ -1055,6 +1026,101 @@ const AppContentWrapper: React.FC<{
         </div>
       </>
     );
+};
+
+const SleepScreen: React.FC<{ onWake: () => void }> = ({ onWake }) => {
+    const bubbles = React.useMemo(() => 
+        Array.from({ length: 30 }).map((_, i) => {
+            const size = Math.random() * 60 + 20; // 20px to 80px
+            const style = {
+                width: `${size}px`,
+                height: `${size}px`,
+                left: `${Math.random() * 100}%`,
+                animationDuration: `${Math.random() * 15 + 20}s`, // 20s to 35s
+                animationDelay: `${Math.random() * 15}s`,
+            };
+            return <div key={i} className="bubble" style={style} aria-hidden="true" />;
+        }),
+    []);
+
+    return (
+        <div onClick={onWake} onTouchStart={onWake} className="fixed inset-0 bg-stone-950 text-white flex flex-col items-center justify-center cursor-pointer z-50 overflow-hidden" role="button" tabIndex={0} aria-label="受付画面に戻る">
+            {bubbles}
+            <div className="relative z-10 text-center p-8 flex flex-col items-center justify-center">
+                <div className="mb-16">
+                    <span className="bg-green-800 border-2 border-green-500 text-green-100 text-5xl font-bold py-5 px-10 rounded-2xl shadow-lg">
+                        状況：空席
+                    </span>
+                </div>
+                <p className="text-5xl font-semibold text-stone-100 mb-32 leading-relaxed">
+                    巣鴨生・来場者問わず<br/>ご入場いただけます。
+                </p>
+                <p className="text-3xl text-stone-400 animate-pulse">
+                    画面をタッチすると、受付画面に移ります
+                </p>
+            </div>
+        </div>
+    );
+};
+
+const App: React.FC = () => {
+  const [viewState, setViewState] = useState<{view: View, lastVisitorType: VisitorType, isAdminAuthenticated: boolean, adminRole: AdminRole}>({
+    view: 'main',
+    lastVisitorType: null,
+    isAdminAuthenticated: false,
+    adminRole: null,
+  });
+  const [isIdle, setIsIdle] = useState(false);
+
+  useEffect(() => {
+    if (viewState.view !== 'main' || isIdle) {
+      return;
+    }
+
+    let idleTimer: number;
+    const resetTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+           setIsIdle(true);
+        }
+      }, 10000); // 10秒
+    };
+
+    const events: (keyof WindowEventMap)[] = ['mousemove', 'mousedown', 'touchstart', 'keydown', 'scroll'];
+    events.forEach(event => window.addEventListener(event, resetTimer));
+    resetTimer();
+
+    return () => {
+      clearTimeout(idleTimer);
+      events.forEach(event => window.removeEventListener(event, resetTimer));
+    };
+  }, [viewState.view, isIdle]);
+
+  const handleWakeUp = useCallback(() => {
+    setIsIdle(false);
+  }, []);
+
+  return (
+    <VisitorProvider
+      setView={useCallback((view: React.SetStateAction<View>) => {
+        setViewState(s => ({ ...s, view: typeof view === 'function' ? view(s.view) : view }));
+      }, [])}
+      setLastVisitorType={useCallback((lastVisitorType: React.SetStateAction<VisitorType>) => {
+        setViewState(s => ({ ...s, lastVisitorType: typeof lastVisitorType === 'function' ? lastVisitorType(s.lastVisitorType) : lastVisitorType }));
+      }, [])}
+      setIsAdminAuthenticated={useCallback((isAdminAuthenticated: React.SetStateAction<boolean>) => {
+        setViewState(s => ({ ...s, isAdminAuthenticated: typeof isAdminAuthenticated === 'function' ? isAdminAuthenticated(s.isAdminAuthenticated) : isAdminAuthenticated }));
+      }, [])}
+      adminRole={viewState.adminRole}
+      setAdminRole={useCallback((adminRole: React.SetStateAction<AdminRole>) => {
+        setViewState(s => ({ ...s, adminRole: typeof adminRole === 'function' ? adminRole(s.adminRole) : adminRole }));
+      }, [])}
+    >
+        <AppContentWrapper viewState={viewState} setViewState={setViewState} />
+        {isIdle && <SleepScreen onWake={handleWakeUp} />}
+    </VisitorProvider>
+  );
 };
 
 export default App;
