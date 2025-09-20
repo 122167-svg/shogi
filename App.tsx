@@ -715,25 +715,33 @@ const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
     <div className="flex flex-col items-center justify-center min-h-screen p-4 text-white">
         <BackButton onClick={handleBack} />
         <h2 className="text-6xl font-bold mb-4 text-amber-200">在校生 受付</h2>
-        <p className="text-4xl text-stone-200 mb-8">{currentIndex + 1}人目 / {totalStudents}人</p>
-        <div className="w-full max-w-md space-y-6">
-            <div>
-                <label className="block text-2xl mb-2 text-white">学年</label>
-                <div className="grid grid-cols-3 gap-2">{GRADES.map(g => <button type="button" key={g} onClick={() => setGrade(g)} className={`p-4 text-xl rounded-md transition-all duration-200 ${grade === g ? 'bg-amber-400 text-stone-900 font-bold shadow-md' : 'bg-stone-800 border border-stone-600 hover:bg-stone-700 text-white'}`}>{g}</button>)}</div>
+        <div className="bg-amber-400 text-stone-900 font-bold rounded-full px-6 py-2 mb-8 text-4xl inline-block shadow-lg" aria-live="polite" aria-atomic="true">
+            <span className="align-middle text-5xl">{currentIndex + 1}</span>
+            <span className="align-middle text-3xl mx-1">/</span>
+            <span className="align-middle text-3xl">{totalStudents}</span>
+            <span className="align-middle text-3xl ml-2">人目</span>
+        </div>
+        <div className="w-full max-w-2xl space-y-8">
+            <div className="grid grid-cols-2 gap-8">
+                <div>
+                    <label className="block text-2xl mb-4 text-white text-center">学年</label>
+                    <div className="grid grid-cols-3 gap-2">{GRADES.map(g => <button type="button" key={g} onClick={() => setGrade(g)} className={`p-4 text-xl rounded-md transition-all duration-200 ${grade === g ? 'bg-amber-400 text-stone-900 font-bold shadow-md' : 'bg-stone-800 border border-stone-600 hover:bg-stone-700 text-white'}`}>{g}</button>)}</div>
+                </div>
+                <div>
+                    <label className="block text-2xl mb-4 text-white text-center">クラス</label>
+                    <div className="grid grid-cols-4 gap-2">{CLASSES.map(c => <button type="button" key={c} onClick={() => setStudentClass(c)} className={`p-4 text-xl rounded-md transition-all duration-200 ${studentClass === c ? 'bg-amber-400 text-stone-900 font-bold shadow-md' : 'bg-stone-800 border border-stone-600 hover:bg-stone-700 text-white'}`}>{c}</button>)}</div>
+                </div>
             </div>
+
             <div>
-                <label className="block text-2xl mb-2 text-white">クラス</label>
-                <div className="grid grid-cols-4 gap-2">{CLASSES.map(c => <button type="button" key={c} onClick={() => setStudentClass(c)} className={`p-4 text-xl rounded-md transition-all duration-200 ${studentClass === c ? 'bg-amber-400 text-stone-900 font-bold shadow-md' : 'bg-stone-800 border border-stone-600 hover:bg-stone-700 text-white'}`}>{c}</button>)}</div>
-            </div>
-            <div>
-                <label id="student-id-label" className="block text-2xl mb-2 text-white">出席番号</label>
+                <label id="student-id-label" className="block text-2xl mb-2 text-white text-center">出席番号</label>
                 <div 
                     role="button"
                     tabIndex={0}
                     onClick={() => keypadContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') keypadContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }}
                     aria-labelledby="student-id-label" 
-                    className="w-full p-3 bg-stone-900 border border-stone-700 rounded-md text-center text-5xl h-20 flex items-center justify-center mb-2 cursor-pointer transition-colors hover:bg-stone-800"
+                    className="w-full max-w-sm mx-auto p-3 bg-stone-900 border border-stone-700 rounded-md text-center text-5xl h-20 flex items-center justify-center mb-2 cursor-pointer transition-colors hover:bg-stone-800"
                 >
                     {studentId || <span className="text-stone-500">番号</span>}
                 </div>
@@ -742,7 +750,7 @@ const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
                 </div>
             </div>
         </div>
-        <div className="w-full max-w-md mt-8">
+        <div className="w-full max-w-2xl mt-8">
             <button onClick={handleNext} className="w-full text-4xl font-semibold py-6 px-4 bg-blue-800 border border-blue-600 hover:bg-blue-700 rounded-lg transition-all duration-300 transform active:scale-95 shadow-lg flex items-center justify-center">
                  {isEditing ? '編集を完了' : (currentIndex < totalStudents - 1 ? '次の人へ' : '入力完了')}
             </button>
@@ -1014,7 +1022,7 @@ const AppContentWrapper: React.FC<{
     const renderView = () => {
         switch (view) {
             case 'student': return <StudentForm onBack={handleReturnToMain} />;
-            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="保護者様を含めて何名様でいらっしゃいましたか？" />;
+            case 'external': return <GroupForm title="小・中学生の方" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="全部で何名様でいらっしゃいましたか？" />;
             case 'parent': return <GroupForm title="保護者の方" onSubmit={handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
             case 'ob': return <GroupForm title="OBの方" onSubmit={handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
             case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
@@ -1037,6 +1045,7 @@ const AppContentWrapper: React.FC<{
 
 const SleepScreen: React.FC<{ onWake: () => void }> = ({ onWake }) => {
     const handleWake = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
         e.stopPropagation();
         onWake();
     };
