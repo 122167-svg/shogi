@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useContext, createContext } from 'react';
 
 declare const JSZip: any;
@@ -513,6 +514,11 @@ const MainScreen: React.FC<{ onSelect: (selection: 'student' | 'external' | 'par
         <span className="inline-block mt-4 bg-amber-300 text-stone-900 px-8 py-2 rounded-lg text-7xl tracking-widest shadow-md">受付</span>
       </h1>
       <p className="text-3xl text-stone-200 mb-12">該当するボタンを押してください</p>
+       <div className="text-center mb-8">
+            <span className="bg-green-800 border-2 border-green-500 text-green-100 text-4xl font-bold py-4 px-8 rounded-xl shadow-lg">
+              状況：空席
+            </span>
+       </div>
       <div className="w-full max-w-5xl space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <button onClick={() => onSelect('student')} className={`${buttonBaseStyle} text-4xl py-16 px-4 bg-blue-800 border-blue-600 hover:bg-blue-700`}><StudentIcon />在校生の方</button>
@@ -738,7 +744,7 @@ const StudentForm: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
   );
 };
 
-const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: any) => void; extraStep?: { question: string; onSelect: (value: boolean) => void; } }> = ({ title, onBack, onSubmit, extraStep }) => {
+const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: any) => void; extraStep?: { question: string; onSelect: (value: boolean) => void; }; countPrompt?: string; }> = ({ title, onBack, onSubmit, extraStep, countPrompt }) => {
     const { setNotification } = useVisitorContext();
     const [count, setCount] = useState<number | null>(null);
     const [customCount, setCustomCount] = useState('');
@@ -872,7 +878,7 @@ const GroupForm: React.FC<{ title: string; onBack: () => void; onSubmit: (data: 
         <div className="flex flex-col items-center justify-center min-h-screen p-4 text-white">
             <BackButton onClick={onBack} label="メイン画面に戻る" />
             <h2 className="text-6xl font-bold mb-6 text-amber-200">{title}</h2>
-            <p className="text-3xl text-stone-200 mb-16 text-center">全部で何名様でいらっしゃいましたか？</p>
+            <p className="text-3xl text-stone-200 mb-16 text-center">{countPrompt || '全部で何名様でいらっしゃいましたか？'}</p>
             <div className="w-full max-w-2xl grid grid-cols-3 gap-6">
                 {[1, 2, 3, 4, 5].map(num => (<button key={num} onClick={() => handleCountSelect(num)} className={buttonClass} aria-label={`${num}名`}>{num}名</button>))}
                 <button onClick={() => setStep('custom')} className={`${buttonClass} bg-stone-800 hover:bg-stone-700 border-stone-600`} aria-label="その他の人数">他</button>
@@ -1030,7 +1036,7 @@ const AppContentWrapper: React.FC<{
     const renderView = () => {
         switch (view) {
             case 'student': return <StudentForm onBack={handleReturnToMain} />;
-            case 'external': return <GroupForm title="ようこそ！" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} />;
+            case 'external': return <GroupForm title="ようこそ！" onSubmit={handleExternalSubmit} onBack={handleReturnToMain} countPrompt="保護者の方を含めて何名様でいらっしゃいましたか？" />;
             case 'parent': return <GroupForm title="保護者の方" onSubmit={handleParentSubmit} onBack={handleReturnToMain} extraStep={{ question: 'ご子息は将棋部員ですか？', onSelect: () => {} }} />;
             case 'ob': return <GroupForm title="OBの方" onSubmit={handleAlumniSubmit} onBack={handleReturnToMain} extraStep={{ question: '在校時、囲碁将棋部に所属していましたか？', onSelect: () => {} }} />;
             case 'thanks': return <CompletionScreen onFinish={handleReturnToMain} visitorType={lastVisitorType} />;
