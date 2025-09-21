@@ -1114,7 +1114,7 @@ const SleepScreen: React.FC<{ onWake: () => void; isWaking: boolean; }> = ({ onW
                     <div className="main-bubble-text">空席</div>
                 </div>
                 <p className="text-4xl text-stone-200 mb-20 leading-relaxed">
-                    どなたでもご入場いただけます
+                    どなたでもご入場いただけます（受付をお願いします）。
                 </p>
                 <p className="text-3xl text-stone-300 animate-pulse">
                     画面をタッチして受付を開始
